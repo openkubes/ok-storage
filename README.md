@@ -70,6 +70,42 @@ make uninstall
 StorageClasses are untouched by `make uninstall` (`reclaimPolicy: Retain`);
 run `make clean` separately if you also want those removed.
 
+## Testing
+
+`tests/` contains verification manifests for each contract StorageClass —
+not part of the contract itself, just proof it actually works on this
+cluster. Safe to apply and delete any time; nothing here is meant to be
+left running.
+
+**`ok-storage-block`** — confirms a replicated RWO volume schedules across
+both nodes:
+
+```bash
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f tests/verify-block.yaml
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test --timeout=60s
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test -- sh -c 'echo hello > /data/hello.txt && cat /data/hello.txt'
+
+# verify replica placement (expect one on each node)
+PV=$(kubectl --kubeconfig ~/.kube/ok-infra.yaml get pvc ok-storage-test -o jsonpath='{.spec.volumeName}')
+kubectl --kubeconfig ~/.kube/ok-infra.yaml -n longhorn-system get replicas.longhorn.io \
+  -l longhornvolume=$PV -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeID,STATE:.status.currentState
+
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-block.yaml
+```
+
+**`ok-storage-shared`** — confirms two pods can mount the same volume at
+once (real shared access, not just independent mounts):
+
+```bash
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f tests/verify-shared.yaml
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-a pod/ok-storage-test-b --timeout=120s
+
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-a -- sh -c 'echo "written by pod A" > /data/shared.txt'
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-b -- cat /data/shared.txt   # expect: written by pod A
+
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-shared.yaml
+```
+
 Consume it like any other StorageClass:
 
 ```yaml
@@ -98,6 +134,9 @@ ok-storage/
 │   └── longhorn-values.yaml      # version-controlled Longhorn HA parameters
 ├── scripts/
 │   └── prereqs.sh                # open-iscsi + nfs-common host preflight
+├── tests/
+│   ├── verify-block.yaml         # ok-storage-block verification (see Testing)
+│   └── verify-shared.yaml        # ok-storage-shared verification (see Testing)
 └── docs/
     └── snapshot-semantics.md     # crash- vs application-consistent snapshots
 ```
