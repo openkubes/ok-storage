@@ -55,6 +55,21 @@ make apply-classes  # apply ok-storage-block / -shared / -local
 make status         # Longhorn nodes, volumes, and the contract StorageClasses
 ```
 
+### Uninstall
+
+`deletingConfirmationFlag` is left at its default (`false`) — Longhorn's own
+safety guard against accidental deletion. `make uninstall` will fail with
+`BackoffLimitExceeded` until you explicitly confirm:
+
+```bash
+kubectl --kubeconfig ~/.kube/ok-infra.yaml -n longhorn-system \
+  patch settings.longhorn.io deleting-confirmation-flag --type merge -p '{"value":"true"}'
+make uninstall
+```
+
+StorageClasses are untouched by `make uninstall` (`reclaimPolicy: Retain`);
+run `make clean` separately if you also want those removed.
+
 Consume it like any other StorageClass:
 
 ```yaml

@@ -18,7 +18,13 @@ defaultSettings:
   # the OS and kubelet also depend on.
   storageMinimalAvailablePercentage: 15
   storageOverProvisioningPercentage: 100
-  createDefaultDiskLabeledNodes: true
+  # false = Longhorn auto-creates a default disk at defaultDataPath on every
+  # node as it joins, no manual labeling required. (A prior version of this
+  # file set this to true, which requires the
+  # node.longhorn.io/create-default-disk=true label on every node -- without
+  # it, no disk is created at all and every volume fails to schedule with
+  # "disks are unavailable". Caught during OK-55 verification.)
+  createDefaultDiskLabeledNodes: false
   defaultReplicaCount: 2
   replicaSoftAntiAffinity: false
   replicaZoneSoftAntiAffinity: true

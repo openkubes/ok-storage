@@ -1,9 +1,16 @@
-.PHONY: prereqs install uninstall apply-classes status backup-target clean
+.PHONY: help prereqs install uninstall apply-classes status backup-target clean
 
 KUBECONFIG_FILE ?= $(HOME)/.kube/ok-infra.yaml
 LONGHORN_NAMESPACE ?= longhorn-system
 LONGHORN_VERSION ?= v1.7.0
 HOSTS ?= ok-infra ok-gpu
+
+## help: show available targets (default target -- bare `make` is a no-op by design)
+help:
+	@echo "ok-storage -- available targets:"
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## /  /'
+
+.DEFAULT_GOAL := help
 
 ## prereqs: install open-iscsi + nfs-common on every RKE2 host node
 prereqs:
