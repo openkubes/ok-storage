@@ -15,17 +15,13 @@ implementation.
 
 | StorageClass | Access Mode | Guarantees |
 |---|---|---|
-| `ok-storage-block` (default) | RWO | Replicated (>=2), survives single node failure, snapshot/restore*, online expansion |
+| `ok-storage-block` (default) | RWO | Replicated (>=2), survives single node failure, snapshot/restore, online expansion |
 | `ok-storage-shared` | RWX | Shared storage required by KubeVirt live migration and multi-pod workloads, same durability as block |
 | `ok-storage-local` | RWO | Node-local, non-replicated — scratch, cache, reproducible data only |
 
 No manifest in any `ok-*` repo may reference an implementation-specific
 StorageClass (e.g. `longhorn`, `rook-ceph-block`). The three names above are
 the only stable interface.
-
-\* Snapshot/restore requires a configured Longhorn backup target (S3/NFS),
-which does not exist yet — see the Testing section below for the current
-verification approach and status.
 
 ## Current Implementation: Longhorn v1
 
@@ -81,6 +77,19 @@ not part of the contract itself, just proof it actually works on this
 cluster. Safe to apply and delete any time; nothing here is meant to be
 left running.
 
+> **Both `ok-storage-block` and `ok-storage-shared` use `reclaimPolicy: Retain`.**
+> Deleting a test PVC does **not** delete its `PersistentVolume` or the
+> underlying Longhorn volume — that's the point of `Retain`, it protects
+> real data from an accidental PVC deletion. For test cleanup this means
+> an extra step: after `kubectl delete -f tests/...`, also check for and
+> remove the now-`Released` PV and the orphaned Longhorn volume:
+> ```bash
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml get pv | grep Released
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml delete pv <name>
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml -n longhorn-system get volumes.longhorn.io
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml -n longhorn-system delete volumes.longhorn.io <name>
+> ```
+
 **`ok-storage-block`** — confirms a replicated RWO volume schedules across
 both nodes:
 
@@ -110,26 +119,46 @@ kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-b -- cat /data/s
 kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-shared.yaml
 ```
 
-**Data duplication via CSI clone** (`ok-storage-block`) — confirms a
-point-in-time copy of a volume's data lands in a new, independent PVC:
+**Snapshot/restore** (`ok-storage-block`) — confirms a crash-consistent
+snapshot can be taken and restored into a new, independent volume. Uses
+the Kubernetes-native `VolumeSnapshot` API (`storageclasses/ok-storage-block-snapshot-class.yaml`,
+applied automatically by `make apply-classes` / `make install`) rather
+than Longhorn's own Snapshot CRD, keeping the test driver-agnostic:
 
 ```bash
 # 1. Create the source PVC + pod, write data
-kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f tests/verify-clone.yaml
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f tests/verify-snapshot-restore.yaml
 kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-src --timeout=60s
-kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "before clone" > /data/state.txt'
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "before snapshot" > /data/state.txt'
 
-# 2. Clone it into a new, independent PVC + pod
+# 2. Take the snapshot
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f - <<'EOF'
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: ok-storage-test-snap
+spec:
+  volumeSnapshotClassName: ok-storage-block-snapshot
+  source:
+    persistentVolumeClaimName: ok-storage-test-src
+EOF
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=jsonpath='{.status.readyToUse}'=true volumesnapshot/ok-storage-test-snap --timeout=60s
+
+# 3. Change the source data, to prove restore comes from the snapshot, not the live volume
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "AFTER snapshot -- should not appear in restore" > /data/state.txt'
+
+# 4. Restore the snapshot into a new, independent PVC + pod
 kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f - <<'EOF'
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ok-storage-test-cloned
+  name: ok-storage-test-restored
 spec:
   storageClassName: ok-storage-block
   dataSource:
-    name: ok-storage-test-src
-    kind: PersistentVolumeClaim
+    name: ok-storage-test-snap
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
@@ -138,7 +167,7 @@ spec:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ok-storage-test-cloned
+  name: ok-storage-test-restored
 spec:
   containers:
     - name: test
@@ -150,32 +179,19 @@ spec:
   volumes:
     - name: data
       persistentVolumeClaim:
-        claimName: ok-storage-test-cloned
+        claimName: ok-storage-test-restored
 EOF
-kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-cloned --timeout=60s
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-restored --timeout=60s
 
-# 3. Change the source data, to prove the clone is independent, not a live link
-kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "AFTER clone -- should not appear in the clone" > /data/state.txt'
+# 5. Confirm: restored volume has the pre-snapshot content, source has the post-snapshot content
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-restored -- cat /data/state.txt   # expect: before snapshot
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- cat /data/state.txt         # expect: AFTER snapshot ...
 
-# 4. Confirm: clone has the pre-change content, source has the post-change content
-kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-cloned -- cat /data/state.txt   # expect: before clone
-kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- cat /data/state.txt       # expect: AFTER clone ...
-
-# 5. Clean up
-kubectl --kubeconfig ~/.kube/ok-infra.yaml delete pod/ok-storage-test-cloned pvc/ok-storage-test-cloned
-kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-clone.yaml
+# 6. Clean up
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete pod/ok-storage-test-restored pvc/ok-storage-test-restored
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete volumesnapshot/ok-storage-test-snap
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-snapshot-restore.yaml
 ```
-
-> **Snapshot/restore via the Kubernetes-native `VolumeSnapshot` API is
-> not yet usable.** Longhorn's CSI driver maps `VolumeSnapshot` to a
-> Longhorn *backup* (upload to an external S3/NFS target), not a local
-> snapshot — it fails with `missing input parameter` until a backup
-> target is configured. `storageclasses/ok-storage-block-snapshot-class.yaml`
-> is committed and ready for when that's set up, but is not functional
-> today. See [`docs/snapshot-semantics.md`](docs/snapshot-semantics.md).
-> The clone test above verifies the same underlying guarantee (point-in-time
-> data duplication into an independent volume) without needing a backup
-> target. Configuring a backup target is tracked as follow-up work.
 
 Consume it like any other StorageClass:
 
@@ -209,7 +225,7 @@ ok-storage/
 ├── tests/
 │   ├── verify-block.yaml             # ok-storage-block verification (see Testing)
 │   ├── verify-shared.yaml            # ok-storage-shared verification (see Testing)
-│   └── verify-clone.yaml             # ok-storage-block data-duplication (see Testing)
+│   └── verify-snapshot-restore.yaml  # ok-storage-block snapshot/restore (see Testing)
 └── docs/
     └── snapshot-semantics.md     # crash- vs application-consistent snapshots
 ```
