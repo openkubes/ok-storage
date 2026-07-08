@@ -1,0 +1,22 @@
+# Contract: ok-storage-block
+# Access Mode: RWO
+# Guarantees: Replicated (>=2), survives single node failure,
+#             snapshot/restore, online expansion
+#
+# Implementation: Longhorn v1 data engine
+# See: architecture/decisions/ADR-Platform-009-storage-contract.md
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok-storage-block
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "2"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"

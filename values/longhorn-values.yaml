@@ -1,0 +1,43 @@
+# Longhorn HA configuration for the OpenKubes RKE2 host cluster.
+#
+# Per ADR-Platform-009 GPT review amendment: HA parameters must be
+# version-controlled, not tribal knowledge ("configuration, not folklore").
+#
+# Hardware context: ok-infra and ok-gpu are fully partitioned (no free
+# NVMe). Longhorn uses /var/lib/longhorn on the root filesystem with an
+# explicit storage reservation, rather than a dedicated block device.
+#
+# Redundancy model: RAID1 (disk-level, not used here) x replica=2
+# (Longhorn-level) are layered, independent failure domains -- not
+# redundant overhead. Longhorn's replica=2 is the platform's only
+# redundancy layer; workload clusters must not run nested Longhorn.
+
+defaultSettings:
+  defaultDataPath: /var/lib/longhorn
+  # Reserve space on the root filesystem so Longhorn never fills the disk
+  # the OS and kubelet also depend on.
+  storageMinimalAvailablePercentage: 15
+  storageOverProvisioningPercentage: 100
+  createDefaultDiskLabeledNodes: true
+  defaultReplicaCount: 2
+  replicaSoftAntiAffinity: false
+  replicaZoneSoftAntiAffinity: true
+  guaranteedEngineManagerCPU: 12
+  guaranteedReplicaManagerCPU: 12
+  # RWX volumes (ok-storage-shared) are served via Longhorn's built-in
+  # share-manager. Required for KubeVirt live migration.
+  concurrentAutomaticEngineUpgradePerNodeLimit: 0
+
+persistence:
+  defaultClass: false          # ok-storage-block owns is-default-class
+  defaultClassReplicaCount: 2
+  reclaimPolicy: Retain
+
+longhornManager:
+  priorityClass: system-cluster-critical
+
+longhornDriver:
+  priorityClass: system-cluster-critical
+
+# Prerequisite (per ADR-009): open-iscsi must be installed on all
+# RKE2 host nodes before Longhorn is deployed. See scripts/prereqs.sh.

@@ -1,0 +1,22 @@
+# Contract: ok-storage-shared
+# Access Mode: RWX
+# Guarantees: Provides the shared storage required by KubeVirt live migration
+#             and multi-pod workloads, same durability as ok-storage-block
+#
+# Implementation: Longhorn v1 data engine, share-manager (internal NFS,
+#                 backing volume is replicated and HA)
+# See: architecture/decisions/ADR-Platform-009-storage-contract.md
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok-storage-shared
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "2"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+  migratable: "true"

@@ -1,0 +1,14 @@
+# Contract: ok-storage-local
+# Access Mode: RWO
+# Guarantees: Node-local, non-replicated. Scratch, cache,
+#             reproducible data only. No survival of node failure.
+#
+# Implementation: local-path-provisioner (unchanged from pre-ADR-009 state)
+# See: architecture/decisions/ADR-Platform-009-storage-contract.md
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok-storage-local
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

@@ -1,0 +1,10 @@
+# kubeconfigs must never be committed
+*.kube/
+kubeconfig*.yaml
+
+# local helm state
+.helm/
+
+# OS / editor cruft
+.DS_Store
+*.swp
