@@ -15,13 +15,17 @@ implementation.
 
 | StorageClass | Access Mode | Guarantees |
 |---|---|---|
-| `ok-storage-block` (default) | RWO | Replicated (>=2), survives single node failure, snapshot/restore, online expansion |
+| `ok-storage-block` (default) | RWO | Replicated (>=2), survives single node failure, snapshot/restore*, online expansion |
 | `ok-storage-shared` | RWX | Shared storage required by KubeVirt live migration and multi-pod workloads, same durability as block |
 | `ok-storage-local` | RWO | Node-local, non-replicated — scratch, cache, reproducible data only |
 
 No manifest in any `ok-*` repo may reference an implementation-specific
 StorageClass (e.g. `longhorn`, `rook-ceph-block`). The three names above are
 the only stable interface.
+
+\* Snapshot/restore requires a configured Longhorn backup target (S3/NFS),
+which does not exist yet — see the Testing section below for the current
+verification approach and status.
 
 ## Current Implementation: Longhorn v1
 
@@ -106,6 +110,73 @@ kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-b -- cat /data/s
 kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-shared.yaml
 ```
 
+**Data duplication via CSI clone** (`ok-storage-block`) — confirms a
+point-in-time copy of a volume's data lands in a new, independent PVC:
+
+```bash
+# 1. Create the source PVC + pod, write data
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f tests/verify-clone.yaml
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-src --timeout=60s
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "before clone" > /data/state.txt'
+
+# 2. Clone it into a new, independent PVC + pod
+kubectl --kubeconfig ~/.kube/ok-infra.yaml apply -f - <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ok-storage-test-cloned
+spec:
+  storageClassName: ok-storage-block
+  dataSource:
+    name: ok-storage-test-src
+    kind: PersistentVolumeClaim
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok-storage-test-cloned
+spec:
+  containers:
+    - name: test
+      image: busybox:1.36
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: ok-storage-test-cloned
+EOF
+kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=condition=Ready pod/ok-storage-test-cloned --timeout=60s
+
+# 3. Change the source data, to prove the clone is independent, not a live link
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "AFTER clone -- should not appear in the clone" > /data/state.txt'
+
+# 4. Confirm: clone has the pre-change content, source has the post-change content
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-cloned -- cat /data/state.txt   # expect: before clone
+kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- cat /data/state.txt       # expect: AFTER clone ...
+
+# 5. Clean up
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete pod/ok-storage-test-cloned pvc/ok-storage-test-cloned
+kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-clone.yaml
+```
+
+> **Snapshot/restore via the Kubernetes-native `VolumeSnapshot` API is
+> not yet usable.** Longhorn's CSI driver maps `VolumeSnapshot` to a
+> Longhorn *backup* (upload to an external S3/NFS target), not a local
+> snapshot — it fails with `missing input parameter` until a backup
+> target is configured. `storageclasses/ok-storage-block-snapshot-class.yaml`
+> is committed and ready for when that's set up, but is not functional
+> today. See [`docs/snapshot-semantics.md`](docs/snapshot-semantics.md).
+> The clone test above verifies the same underlying guarantee (point-in-time
+> data duplication into an independent volume) without needing a backup
+> target. Configuring a backup target is tracked as follow-up work.
+
 Consume it like any other StorageClass:
 
 ```yaml
@@ -127,16 +198,18 @@ spec:
 ok-storage/
 ├── Makefile                     # install / uninstall / status lifecycle targets
 ├── storageclasses/
-│   ├── ok-storage-block.yaml     # RWO, replicated, default
-│   ├── ok-storage-shared.yaml    # RWX, live migration
-│   └── ok-storage-local.yaml     # RWO, node-local, scratch
+│   ├── ok-storage-block.yaml             # RWO, replicated, default
+│   ├── ok-storage-shared.yaml            # RWX, live migration
+│   ├── ok-storage-local.yaml             # RWO, node-local, scratch
+│   └── ok-storage-block-snapshot-class.yaml  # VolumeSnapshotClass for snapshot/restore
 ├── values/
 │   └── longhorn-values.yaml      # version-controlled Longhorn HA parameters
 ├── scripts/
 │   └── prereqs.sh                # open-iscsi + nfs-common host preflight
 ├── tests/
-│   ├── verify-block.yaml         # ok-storage-block verification (see Testing)
-│   └── verify-shared.yaml        # ok-storage-shared verification (see Testing)
+│   ├── verify-block.yaml             # ok-storage-block verification (see Testing)
+│   ├── verify-shared.yaml            # ok-storage-shared verification (see Testing)
+│   └── verify-clone.yaml             # ok-storage-block data-duplication (see Testing)
 └── docs/
     └── snapshot-semantics.md     # crash- vs application-consistent snapshots
 ```

@@ -1,0 +1,14 @@
+# Enables the snapshot/restore guarantee of ok-storage-block via the
+# Kubernetes-native VolumeSnapshot API (kind: VolumeSnapshot), rather than
+# Longhorn's own Snapshot CRD directly -- keeps the contract
+# driver-agnostic, consistent with "OpenKubes owns the contracts, not the
+# components."
+#
+# Snapshots taken through this class are crash-consistent, not
+# application-consistent. See docs/snapshot-semantics.md.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: ok-storage-block-snapshot
+driver: driver.longhorn.io
+deletionPolicy: Delete
