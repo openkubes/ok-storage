@@ -31,10 +31,13 @@ install:
 		-f values/longhorn-values.yaml
 	$(MAKE) apply-classes
 
-## apply-classes: apply the ok-storage-* contract StorageClasses and
-## remove the raw "longhorn" StorageClass the Helm chart creates by
-## default -- ADR-Platform-009 forbids referencing implementation-specific
-## StorageClasses directly, so it must not exist as a temptation.
+## apply-classes: apply the ok-storage-* contract StorageClasses.
+## Also best-effort deletes the raw "longhorn" StorageClass the Helm chart
+## creates -- but Longhorn's own controller recreates it on its next
+## reconcile (observed: back within ~20s), so this does NOT durably remove
+## it. Real enforcement of "reference ok-storage-*, never longhorn
+## directly" (ADR-Platform-009) is code review / repo discipline, not a
+## technical block. Left in as a courtesy for right-after-install checks.
 apply-classes:
 	kubectl --kubeconfig $(KUBECONFIG_FILE) apply -f storageclasses/
 	kubectl --kubeconfig $(KUBECONFIG_FILE) delete storageclass longhorn --ignore-not-found

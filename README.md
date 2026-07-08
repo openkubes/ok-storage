@@ -68,10 +68,17 @@ make status         # Longhorn nodes, volumes, and the contract StorageClasses
 > kubectl --kubeconfig ~/.kube/ok-infra.yaml patch storageclass local-path \
 >   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
 > ```
-> `make apply-classes` already removes the raw `longhorn` StorageClass that
-> the Helm chart creates by default — ADR-Platform-009 forbids referencing
-> implementation-specific StorageClasses directly, so it shouldn't exist
-> as a temptation.
+> `make apply-classes` best-effort deletes the raw `longhorn` StorageClass
+> that the Helm chart creates by default — but **it comes back**. Longhorn's
+> own controller recreates it on its next reconcile (observed: within
+> ~20 seconds), regardless of `persistence.defaultClass` in
+> `values/longhorn-values.yaml`, which only controls whether it's marked
+> *default*, not whether it exists. There is no known chart setting to
+> suppress its creation entirely. ADR-Platform-009 forbids referencing
+> implementation-specific StorageClasses directly — enforcing that in
+> practice means code review and repo discipline, not a technical block.
+> The delete step is left in as a courtesy for right-after-install checks,
+> not a guarantee.
 
 ### Uninstall
 
