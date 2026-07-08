@@ -31,9 +31,13 @@ install:
 		-f values/longhorn-values.yaml
 	$(MAKE) apply-classes
 
-## apply-classes: apply the ok-storage-* contract StorageClasses
+## apply-classes: apply the ok-storage-* contract StorageClasses and
+## remove the raw "longhorn" StorageClass the Helm chart creates by
+## default -- ADR-Platform-009 forbids referencing implementation-specific
+## StorageClasses directly, so it must not exist as a temptation.
 apply-classes:
 	kubectl --kubeconfig $(KUBECONFIG_FILE) apply -f storageclasses/
+	kubectl --kubeconfig $(KUBECONFIG_FILE) delete storageclass longhorn --ignore-not-found
 
 ## status: show Longhorn nodes, volumes, and the contract StorageClasses
 status:

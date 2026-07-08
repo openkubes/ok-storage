@@ -55,6 +55,24 @@ make apply-classes  # apply ok-storage-block / -shared / -local
 make status         # Longhorn nodes, volumes, and the contract StorageClasses
 ```
 
+> **Check for a competing default StorageClass.** RKE2 ships its own
+> `local-path` StorageClass marked default out of the box. Kubernetes
+> allows multiple `(default)` classes to coexist, but which one actually
+> wins for an unqualified PVC is undefined. After `make install`, verify:
+> ```bash
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml get storageclass
+> ```
+> If more than one shows `(default)`, un-default the other one (this is a
+> cluster-wide RKE2 setting, not something `make` manages):
+> ```bash
+> kubectl --kubeconfig ~/.kube/ok-infra.yaml patch storageclass local-path \
+>   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+> ```
+> `make apply-classes` already removes the raw `longhorn` StorageClass that
+> the Helm chart creates by default — ADR-Platform-009 forbids referencing
+> implementation-specific StorageClasses directly, so it shouldn't exist
+> as a temptation.
+
 ### Uninstall
 
 `deletingConfirmationFlag` is left at its default (`false`) — Longhorn's own
