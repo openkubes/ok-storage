@@ -1,4 +1,4 @@
-.PHONY: help prereqs install uninstall apply-classes status backup-target clean
+.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean
 
 KUBECONFIG_FILE ?= $(HOME)/.kube/ok-infra.yaml
 LONGHORN_NAMESPACE ?= longhorn-system
@@ -11,6 +11,10 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## /  /'
 
 .DEFAULT_GOAL := help
+
+## verify: run offline contract and manifest guards
+verify:
+	./scripts/verify-manifests.sh
 
 ## prereqs: install open-iscsi + nfs-common on every RKE2 host node
 prereqs:

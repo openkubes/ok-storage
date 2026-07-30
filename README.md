@@ -148,7 +148,9 @@ kubectl --kubeconfig ~/.kube/ok-infra.yaml delete -f tests/verify-shared.yaml
 snapshot can be taken and restored into a new, independent volume. Uses
 the Kubernetes-native `VolumeSnapshot` API (`storageclasses/ok-storage-block-snapshot-class.yaml`,
 applied automatically by `make apply-classes` / `make install`) rather
-than Longhorn's own Snapshot CRD, keeping the test driver-agnostic:
+than Longhorn's own Snapshot CRD, keeping the consumer API
+driver-agnostic. The current Longhorn implementation explicitly uses a
+local `type: snap` snapshot; it does not require a backup target:
 
 ```bash
 # 1. Create the source PVC + pod, write data
@@ -168,6 +170,10 @@ spec:
     persistentVolumeClaimName: ok-storage-test-src
 EOF
 kubectl --kubeconfig ~/.kube/ok-infra.yaml wait --for=jsonpath='{.status.readyToUse}'=true volumesnapshot/ok-storage-test-snap --timeout=60s
+
+# Current Longhorn implementation: expect a snap:// handle, never bak://
+CONTENT=$(kubectl --kubeconfig ~/.kube/ok-infra.yaml get volumesnapshot/ok-storage-test-snap -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+kubectl --kubeconfig ~/.kube/ok-infra.yaml get volumesnapshotcontent "$CONTENT" -o jsonpath='{.status.snapshotHandle}{"\n"}'
 
 # 3. Change the source data, to prove restore comes from the snapshot, not the live volume
 kubectl --kubeconfig ~/.kube/ok-infra.yaml exec ok-storage-test-src -- sh -c 'echo "AFTER snapshot -- should not appear in restore" > /data/state.txt'
