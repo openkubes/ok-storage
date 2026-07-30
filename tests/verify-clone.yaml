@@ -4,13 +4,9 @@
 #
 # This creates only the source PVC + pod. See README's Testing section for
 # the actual verification step (CSI volume clone into a new, independent
-# PVC) and important context: Longhorn's CSI driver maps the Kubernetes-
-# native VolumeSnapshot API to a Longhorn *backup* (upload to an external
-# S3/NFS target), not a local snapshot -- so VolumeSnapshot-based
-# snapshot/restore only works once a backup target is configured (not yet
-# done; see docs/snapshot-semantics.md). CSI volume cloning below proves
-# the same underlying guarantee (point-in-time data duplication into an
-# independent volume) without requiring a backup target.
+# PVC). The separate Kubernetes VolumeSnapshot workflow uses Longhorn's
+# local `type: snap` mode and likewise requires no external backup target;
+# see docs/snapshot-semantics.md.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

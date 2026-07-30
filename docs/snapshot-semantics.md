@@ -34,25 +34,21 @@ that is implementation-independent. Application-consistency depends on
 knowledge only the workload has, and is therefore explicitly out of scope
 for `ok-storage`.
 
-## Current gap: Kubernetes-native snapshot/restore needs a backup target
+## Current implementation: local Longhorn CSI snapshots
 
-Found during OK-55 verification: Longhorn's CSI driver maps the
-Kubernetes-native `VolumeSnapshot` API to a Longhorn **backup** (an upload
-to an external S3/NFS backup target), not to a local, in-cluster snapshot.
-Without a backup target configured, creating a `VolumeSnapshot` fails
-(`missing input parameter`) — there is nowhere to upload to.
+The Kubernetes-native `VolumeSnapshotClass`
+`ok-storage-block-snapshot` explicitly sets Longhorn's `type: snap`.
+That parameter selects a local, in-cluster Longhorn snapshot. It is an
+implementation detail and does not change the implementation-independent
+`ok-storage-block` contract.
 
-`storageclasses/ok-storage-block-snapshot-class.yaml` is committed and
-will work once a backup target exists, but is not functional today.
+Longhorn also supports `type: bak`, which creates a backup and requires an
+S3 or NFS backup target. The OpenKubes snapshot class deliberately does not
+select that mode: local CDI clone workflows must not depend on an external
+backup target.
 
-Until then, `ok-storage-block`'s "snapshot/restore" guarantee is verified
-via CSI **volume cloning** instead (`tests/verify-clone.yaml`): a new,
-independent PVC populated from a point-in-time copy of an existing one.
-This proves the same underlying capability (point-in-time data
-duplication) without depending on an external backup target, but it is
-not a full substitute — a clone stays on the same cluster and doesn't
-protect against cluster-level loss, whereas a real backup would.
-
-Configuring a Longhorn backup target (S3 or NFS) is tracked as follow-up
-work, similar in spirit to the deferred Ceph migration: a known, deliberate
-gap, not an oversight.
+A local snapshot protects against accidental changes to the source volume
+and enables snapshot/restore and CDI smart-clone workflows on the same
+cluster. It is not a disaster-recovery backup: loss of the Longhorn cluster
+can also destroy the snapshot. Off-cluster backup remains a separate
+capability and is not implied by this contract.

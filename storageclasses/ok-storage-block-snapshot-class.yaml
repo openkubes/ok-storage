@@ -6,9 +6,14 @@
 #
 # Snapshots taken through this class are crash-consistent, not
 # application-consistent. See docs/snapshot-semantics.md.
+#
+# `type: snap` is a Longhorn implementation detail: it selects a local
+# snapshot instead of a backup (`type: bak`) that requires a backup target.
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
   name: ok-storage-block-snapshot
 driver: driver.longhorn.io
 deletionPolicy: Delete
+parameters:
+  type: snap
