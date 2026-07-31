@@ -23,6 +23,33 @@ No manifest in any `ok-*` repo may reference an implementation-specific
 StorageClass (e.g. `longhorn`, `rook-ceph-block`). The three names above are
 the only stable interface.
 
+### Explicit non-HA GPU demo profile
+
+`ok-storage-block-gpu-test` is a deliberately **unstable, demo-only** class.
+It is not a fourth storage contract and must never be used by production
+consumers. It creates one Longhorn replica, selects only the Longhorn node tag
+`openkubes-gpu-demo`, uses `reclaimPolicy: Delete`, and exists solely for
+repeatable short-lived Talos/Flatcar demonstrations on `ok-gpu`.
+
+The lifecycle is fail-closed and separate from `make apply-classes`:
+
+```bash
+# Mutating: requires separate runtime approval.
+GPU_DEMO_APPLY=yes make gpu-demo-apply \
+  KUBECONFIG_FILE="$HOME/.kube/ok-infra.yaml"
+
+# Read-only verification.
+make gpu-demo-verify KUBECONFIG_FILE="$HOME/.kube/ok-infra.yaml"
+
+# After every demo PVC/PV/Longhorn volume is gone; fails if still in use.
+GPU_DEMO_REMOVE=yes make gpu-demo-remove \
+  KUBECONFIG_FILE="$HOME/.kube/ok-infra.yaml"
+```
+
+The tool merges its tag into the existing Longhorn node tags and removes only
+that tag during cleanup. It never changes `ok-storage-block`, its replica
+count, or existing volumes.
+
 ## Current Implementation: Longhorn v1
 
 Chosen for the current hardware: two bare-metal storage nodes (`ok-infra`,
@@ -244,6 +271,8 @@ spec:
 ```
 ok-storage/
 ├── Makefile                     # install / uninstall / status lifecycle targets
+├── demo/
+│   └── ok-storage-block-gpu-test.yaml  # explicit non-HA ok-gpu demo class
 ├── storageclasses/
 │   ├── ok-storage-block.yaml             # RWO, replicated, default
 │   ├── ok-storage-shared.yaml            # RWX, live migration
@@ -252,6 +281,7 @@ ok-storage/
 ├── values/
 │   └── longhorn-values.yaml      # version-controlled Longhorn HA parameters
 ├── scripts/
+│   ├── gpu-demo-storage.py       # guarded node-tag / demo-class lifecycle
 │   └── prereqs.sh                # open-iscsi + nfs-common host preflight
 ├── tests/
 │   ├── verify-block.yaml             # ok-storage-block verification (see Testing)

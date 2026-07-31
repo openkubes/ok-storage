@@ -1,4 +1,4 @@
-.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean
+.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean gpu-demo-apply gpu-demo-verify gpu-demo-remove
 
 KUBECONFIG_FILE ?= $(HOME)/.kube/ok-infra.yaml
 LONGHORN_NAMESPACE ?= longhorn-system
@@ -15,6 +15,7 @@ help:
 ## verify: run offline contract and manifest guards
 verify:
 	./scripts/verify-manifests.sh
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/gpu-demo-storage.py self-test
 
 ## prereqs: install open-iscsi + nfs-common on every RKE2 host node
 prereqs:
@@ -59,3 +60,17 @@ uninstall:
 ## clean: remove the ok-storage-* StorageClasses (does not touch Longhorn itself)
 clean:
 	kubectl --kubeconfig $(KUBECONFIG_FILE) delete -f storageclasses/ --ignore-not-found
+
+## gpu-demo-apply: explicitly enable the non-HA, ok-gpu-only demo StorageClass
+gpu-demo-apply:
+	GPU_DEMO_APPLY=$(GPU_DEMO_APPLY) python3 scripts/gpu-demo-storage.py apply \
+		--kubeconfig $(KUBECONFIG_FILE)
+
+## gpu-demo-verify: read-only verification of the GPU demo node tag and StorageClass
+gpu-demo-verify:
+	python3 scripts/gpu-demo-storage.py verify --kubeconfig $(KUBECONFIG_FILE)
+
+## gpu-demo-remove: remove the unused GPU demo StorageClass and only its Longhorn tag
+gpu-demo-remove:
+	GPU_DEMO_REMOVE=$(GPU_DEMO_REMOVE) python3 scripts/gpu-demo-storage.py remove \
+		--kubeconfig $(KUBECONFIG_FILE)

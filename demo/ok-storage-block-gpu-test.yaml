@@ -1,0 +1,22 @@
+# Demo-only storage profile for the OpenKubes Lunch Meetup.
+#
+# This is intentionally NOT part of the stable ok-storage contract. It trades
+# high availability for deterministic placement on the tagged ok-gpu Longhorn
+# node. Production consumers must continue to use ok-storage-block.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok-storage-block-gpu-test
+  labels:
+    openkubes.io/lifecycle: demo
+    openkubes.io/high-availability: "false"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+  fsType: "ext4"
+  nodeSelector: "openkubes-gpu-demo"
