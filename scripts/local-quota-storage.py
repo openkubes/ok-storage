@@ -204,6 +204,7 @@ def verify(args):
         wait_until(lambda: project not in rows(observe('xfs_quota -x -c "report -p -n -N" /data')),'quota row cleanup')
         delete('pod',observer)
         record.update(objects_gone=True,row_gone=True)
+        print('RECORD '+json.dumps(record,sort_keys=True),flush=True)
         records_check(record)
         print('PASS local quota live effects and cleanup')
     finally:
@@ -232,6 +233,9 @@ def lifecycle(args):
     else:
         k(args,'apply','-f',str(ROOT/'demo/local-quota-provisioner.yaml'))
         k(args,'apply','-f',str(ROOT/'demo/ok-storage-local-quota.yaml'))
+        # verify checks readiness once; wait here so apply-then-verify is deterministic.
+        deployment=next(d['metadata']['name'] for d in yaml.safe_load_all((ROOT/'demo/local-quota-provisioner.yaml').read_text()) if d and d['kind']=='Deployment')
+        k(args,'rollout','status','deployment/'+deployment,'-n',NAMESPACE,'--timeout=180s')
     print('PASS local quota '+args.command)
 
 def self_test():
