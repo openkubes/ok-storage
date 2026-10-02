@@ -1,0 +1,46 @@
+STATUS|before|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-b241f7a7-de0c-4ffd-a905-9e6dee2627c7|/var/openebs/ok176-c3/pvc-b241f7a7-de0c-4ffd-a905-9e6dee2627c7|ok176-c3-xfs|-|-|Running|false
+HEADROOM|before|quota128|131072
+EVIDENCE|observer|before|quota128|/data/pvc-b241f7a7-de0c-4ffd-a905-9e6dee2627c7
+READBACK|quota128|1
+XFS_REPORT|quota128|#0             3011532          0          0     00 [--------]
+XFS_REPORT|quota128|#1                   0     131072     131072     00 [--------]
+XFS_REPORT|quota128|#2                   0     262144     262144     00 [--------]
+XFS_REPORT|quota128|#3                   0      32768      32768     00 [--------]
+STATUS|before|quota256|16929515-639a-4537-8330-7008064ed0b3|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-2ca22b89-8599-4d30-bdeb-81d6bc833621|/var/openebs/ok176-c3/pvc-2ca22b89-8599-4d30-bdeb-81d6bc833621|ok176-c3-xfs|-|-|Running|false
+HEADROOM|before|quota256|262144
+EVIDENCE|observer|before|quota256|/data/pvc-2ca22b89-8599-4d30-bdeb-81d6bc833621
+READBACK|quota256|2
+XFS_REPORT|quota256|#0             3011516          0          0     00 [--------]
+XFS_REPORT|quota256|#1                   0     131072     131072     00 [--------]
+XFS_REPORT|quota256|#2                   0     262144     262144     00 [--------]
+XFS_REPORT|quota256|#3                   0      32768      32768     00 [--------]
+STATUS|before|control|951cd5fe-54de-47c6-a914-989285499c70|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-dfc77022-fbdf-455d-bbcc-b03370caec5c|/var/openebs/ok176-c3/pvc-dfc77022-fbdf-455d-bbcc-b03370caec5c|ok176-c3-xfs|-|-|Running|false
+HEADROOM|before|control|32768
+STATUS|before|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-9c909e80-d9ed-49a9-a295-8e0d960c7cb9|/var/openebs/ok176-c3/pvc-9c909e80-d9ed-49a9-a295-8e0d960c7cb9|ok176-c3-xfs-noquota|-|-|Running|false
+HEADROOM|before|noquota|24197524
+STATUS|after|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-b241f7a7-de0c-4ffd-a905-9e6dee2627c7|/var/openebs/ok176-c3/pvc-b241f7a7-de0c-4ffd-a905-9e6dee2627c7|ok176-c3-xfs|0|2026-10-02T05:58:54Z|Succeeded|false
+STATUS|after|quota256|16929515-639a-4537-8330-7008064ed0b3|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-2ca22b89-8599-4d30-bdeb-81d6bc833621|/var/openebs/ok176-c3/pvc-2ca22b89-8599-4d30-bdeb-81d6bc833621|ok176-c3-xfs|0|2026-10-02T05:58:41Z|Succeeded|false
+STATUS|after|control|951cd5fe-54de-47c6-a914-989285499c70|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-dfc77022-fbdf-455d-bbcc-b03370caec5c|/var/openebs/ok176-c3/pvc-dfc77022-fbdf-455d-bbcc-b03370caec5c|ok176-c3-xfs|0|2026-10-02T05:59:51Z|Succeeded|false
+STATUS|after|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|0|ok-176-c3-workers-jvmn2-vvcvr|pvc-9c909e80-d9ed-49a9-a295-8e0d960c7cb9|/var/openebs/ok176-c3/pvc-9c909e80-d9ed-49a9-a295-8e0d960c7cb9|ok176-c3-xfs-noquota|0|2026-10-02T05:58:29Z|Succeeded|false
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|FS|quota128|fd0600000000 xfs
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|IDENTITY|quota128|1000|1000|0
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|USERNS|quota128|0|433520640|65536|0|433520640|65536
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|REASSIGN|quota128|-1|22|1|1
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|RESULT|quota128|134217728|134217728|28|0|0|0|1000|0|0
+WRITER|quota128|a989acb7-6c20-4564-b0b3-530d82a94dc1|HEADROOM|after|quota128|0
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|FS|quota256|fd0600000000 xfs
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|IDENTITY|quota256|1000|1000|0
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|USERNS|quota256|0|780664832|65536|0|780664832|65536
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|REASSIGN|quota256|-1|22|2|2
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|RESULT|quota256|268435456|268435456|28|0|0|0|1000|0|1
+WRITER|quota256|16929515-639a-4537-8330-7008064ed0b3|HEADROOM|after|quota256|262144
+WRITER|control|951cd5fe-54de-47c6-a914-989285499c70|FS|control|fd0600000000 xfs
+WRITER|control|951cd5fe-54de-47c6-a914-989285499c70|IDENTITY|control|1000|1000|0
+WRITER|control|951cd5fe-54de-47c6-a914-989285499c70|USERNS|control|0|2502361088|65536|0|2502361088|65536
+WRITER|control|951cd5fe-54de-47c6-a914-989285499c70|RESULT|control|16777216|33488896|0|0|0|0|1000|0|0
+WRITER|control|951cd5fe-54de-47c6-a914-989285499c70|HEADROOM|after|control|16384
+WRITER|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|FS|noquota|fd0600000000 xfs
+WRITER|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|IDENTITY|noquota|1000|1000|0
+WRITER|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|USERNS|noquota|0|2443640832|65536|0|2443640832|65536
+WRITER|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|RESULT|noquota|167772160|268369920|0|0|0|0|1000|0|0
+WRITER|noquota|0993993c-a904-4bb7-89aa-f1abb5fcf09e|HEADROOM|after|noquota|24033656

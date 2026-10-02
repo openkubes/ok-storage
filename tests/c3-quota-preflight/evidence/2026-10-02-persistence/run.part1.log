@@ -1,0 +1,33 @@
+=== 07:25:21 baseline
+PASS: captured atomic persistence baseline
+=== 07:25:51 P1 provisioner restart
+deployment.apps/ok176-c3-localpv-provisioner restarted
+Waiting for deployment "ok176-c3-localpv-provisioner" rollout to finish: 0 of 1 updated replicas are available...
+deployment "ok176-c3-localpv-provisioner" successfully rolled out
+PASS: captured atomic P1 provisioner-restart checkpoint
+PASS: rendered persistence phase p1 to [redacted-phase-manifest]
+configmap/ok176-c3-p1-writer-source created
+configmap/ok176-c3-p1-gate created
+configmap/ok176-c3-p1-control-gate created
+persistentvolumeclaim/ok176-c3-quota-64 created
+pod/ok176-c3-p1-quota128 created
+pod/ok176-c3-p1-quota256 created
+pod/ok176-c3-p1-noquota created
+pod/ok176-c3-p1-control created
+pod/ok176-c3-p1-quota64 created
+pod/ok176-c3-p1-quota128 condition met
+pod/ok176-c3-p1-quota256 condition met
+pod/ok176-c3-p1-quota64 condition met
+pod/ok176-c3-p1-control condition met
+pod/ok176-c3-p1-noquota condition met
+PASS: captured atomic P1 before status
+configmap/ok176-c3-p1-gate patched
+pod/ok176-c3-p1-quota128 condition met
+pod/ok176-c3-p1-quota256 condition met
+pod/ok176-c3-p1-quota64 condition met
+configmap/ok176-c3-p1-control-gate patched
+pod/ok176-c3-p1-control condition met
+pod/ok176-c3-p1-noquota condition met
+FAIL: P1/quota128: writer FS record must be exactly 'device xfs'
+STEP FAIL: capture --phase P1 --point after
+exit=1

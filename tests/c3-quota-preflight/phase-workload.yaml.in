@@ -1,0 +1,156 @@
+# TEST ONLY: persistence phase __PHASE_UPPER__; reuses the original fixture PVCs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-__PHASE__-writer-source
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+data:
+  quota_writer.c: |
+__WRITER_SOURCE__
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-__PHASE__-gate
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+data: {start: hold}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-__PHASE__-control-gate
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+data: {start: hold}
+__QUOTA64_PVC__
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-__PHASE__-quota128
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3", openkubes.io/phase: "__PHASE_UPPER__"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "test -d /data/nested && chown 1000:1000 /data/nested"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|quota128|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer quota128 /data/nested/__PHASE__-probe 2097152 18446744073709551615 cleanup /data/nested/payload; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|quota128|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-__PHASE__-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-__PHASE__-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-quota-128}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-__PHASE__-quota256
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3", openkubes.io/phase: "__PHASE_UPPER__"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "test -d /data/nested && chown 1000:1000 /data/nested"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|quota256|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer quota256 /data/nested/__PHASE__-probe 314572800 18446744073709551615 cleanup; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|quota256|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-__PHASE__-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-__PHASE__-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-quota-256}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-__PHASE__-noquota
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3", openkubes.io/phase: "__PHASE_UPPER__"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "test -d /data/nested && chown 1000:1000 /data/nested"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|noquota|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer noquota /data/nested/__PHASE__-probe 167772160 18446744073709551615 cleanup; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|noquota|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-__PHASE__-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-__PHASE__-control-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-noquota}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-__PHASE__-control
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3", openkubes.io/phase: "__PHASE_UPPER__"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "test -d /data/nested && chown 1000:1000 /data/nested"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|control|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer control /data/nested/__PHASE__-probe 8388608 18446744073709551615 cleanup; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|control|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-__PHASE__-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-__PHASE__-control-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-control}}
+__QUOTA64_POD__

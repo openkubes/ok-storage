@@ -1,4 +1,4 @@
-.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean gpu-demo-apply gpu-demo-verify gpu-demo-remove local-quota-apply local-quota-verify local-quota-remove
+.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean gpu-demo-apply gpu-demo-verify gpu-demo-remove local-quota-apply local-quota-verify local-quota-remove c3-quota-preflight-self-test c3-quota-preflight-render c3-quota-preflight-check c3-quota-preflight-persist-self-test c3-quota-preflight-persist-render c3-quota-preflight-persist-check
 
 KUBECONFIG_FILE ?= $(HOME)/.kube/ok-infra.yaml
 LONGHORN_NAMESPACE ?= longhorn-system
@@ -17,6 +17,50 @@ verify:
 	./scripts/verify-manifests.sh
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/gpu-demo-storage.py self-test
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/local-quota-storage.py self-test
+	$(MAKE) c3-quota-preflight-self-test
+	$(MAKE) c3-quota-preflight-persist-self-test
+
+## c3-quota-preflight-self-test: offline negative-first tests for the C3 quota evidence checker
+c3-quota-preflight-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_quota_preflight.py self-test
+
+## c3-quota-preflight-render: render the pinned test-only OpenEBS 4.6.0 fixture; never applies it
+c3-quota-preflight-render:
+	@test -n "$(C3_NODE_NAME)" || (echo "FAIL: set C3_NODE_NAME to the disposable worker hostname" >&2; exit 2)
+	@test -n "$(C3_WRITER_BUILDER_IMAGE)" || (echo "FAIL: set digest-pinned C3_WRITER_BUILDER_IMAGE" >&2; exit 2)
+	@test -n "$(C3_RENDERED_MANIFEST)" || (echo "FAIL: set C3_RENDERED_MANIFEST output path" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_render.py \
+		--node-name "$(C3_NODE_NAME)" --writer-builder-image "$(C3_WRITER_BUILDER_IMAGE)" \
+		--output "$(C3_RENDERED_MANIFEST)"
+
+## c3-quota-preflight-check: check captured disposable-Talos/OpenEBS C3 workload output (no cluster mutation)
+c3-quota-preflight-check:
+	@test -n "$(C3_RESULTS)" || (echo "FAIL: set C3_RESULTS to captured writer output" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_quota_preflight.py check-results \
+		--results "$(C3_RESULTS)"
+
+## c3-quota-preflight-persist-self-test: negative-first restart/reboot checker and phase render tests
+c3-quota-preflight-persist-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_persist.py --self-test
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_render.py --self-test
+
+## c3-quota-preflight-persist-render: render p1, p2, or observer for the existing fixture; never applies
+c3-quota-preflight-persist-render:
+	@test -n "$(C3_PHASE)" || (echo "FAIL: set C3_PHASE to p1, p2, or observer" >&2; exit 2)
+	@test -n "$(C3_NODE_NAME)" || (echo "FAIL: set C3_NODE_NAME to the disposable worker hostname" >&2; exit 2)
+	@test -n "$(C3_WRITER_BUILDER_IMAGE)" || (echo "FAIL: set digest-pinned C3_WRITER_BUILDER_IMAGE" >&2; exit 2)
+	@test -n "$(C3_RENDERED_MANIFEST)" || (echo "FAIL: set C3_RENDERED_MANIFEST output path" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_render.py \
+		--phase "$(C3_PHASE)" --node-name "$(C3_NODE_NAME)" \
+		--writer-builder-image "$(C3_WRITER_BUILDER_IMAGE)" --output "$(C3_RENDERED_MANIFEST)"
+
+C3_THROUGH ?= P2
+## c3-quota-preflight-persist-check: check baseline and completed phases through C3_THROUGH (default P2)
+c3-quota-preflight-persist-check:
+	@test -n "$(C3_INITIAL_RESULTS)" || (echo "FAIL: set C3_INITIAL_RESULTS to initial-run capture" >&2; exit 2)
+	@test -n "$(C3_RESULTS)" || (echo "FAIL: set C3_RESULTS to persistence capture" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/c3-quota-preflight/c3_persist.py \
+		--initial "$(C3_INITIAL_RESULTS)" --capture "$(C3_RESULTS)" --through "$(C3_THROUGH)"
 
 ## prereqs: install open-iscsi + nfs-common on every RKE2 host node
 prereqs:
