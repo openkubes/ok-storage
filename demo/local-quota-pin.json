@@ -1,0 +1,25 @@
+{
+  "version": "4.6.0",
+  "url": "https://openebs.github.io/dynamic-localpv-provisioner/localpv-provisioner-4.6.0.tgz",
+  "sha256": "3e6e0661462abbecf944399e2624b0b22249ac386e5d43473f6c1cc8a4337133",
+  "provisioner_sha256": "c660fd2d02ca3b579e7e117c65391ceecfab2cfbcd196d04989444e2ec7ed81f",
+  "class_sha256": "9b2d58a8de7e1e1104f5803784324062b10cfcd0855e105680489e25022fb323",
+  "values_sha256": "7b0a6bd2509ed5919429951de4c05e076ffa09f4d3c487c09ca2e9ef2f95436d",
+  "helm_template_command": "helm template ok-storage-local-quota demo/local-quota-chart-4.6.0.tgz --namespace ok-storage-local-quota -f values/local-quota-values.yaml",
+  "render_command": "{ printf '%s\\n' 'apiVersion: v1' 'kind: Namespace' 'metadata:' '  name: ok-storage-local-quota' '  labels:' '    openkubes.io/lifecycle: demo' '    openkubes.io/storage-profile: local-quota' '    pod-security.kubernetes.io/enforce: privileged' '    pod-security.kubernetes.io/audit: privileged' '    pod-security.kubernetes.io/warn: privileged' '---'; helm template ok-storage-local-quota demo/local-quota-chart-4.6.0.tgz --namespace ok-storage-local-quota -f values/local-quota-values.yaml; } > demo/local-quota-provisioner.yaml",
+  "chart": {
+    "name": "localpv-provisioner",
+    "version": "4.6.0",
+    "url": "https://openebs.github.io/dynamic-localpv-provisioner/localpv-provisioner-4.6.0.tgz",
+    "sha256": "3e6e0661462abbecf944399e2624b0b22249ac386e5d43473f6c1cc8a4337133"
+  },
+  "provisionerSourceCommit": "7426127d566ac249dde04cad9e22a66f80049e0f",
+  "render": {
+    "helmVersion": "v3.11.0+g472c573",
+    "releaseName": "ok-storage-local-quota",
+    "namespace": "ok-storage-local-quota",
+    "values": "values/local-quota-values.yaml",
+    "manifest": "demo/local-quota-provisioner.yaml",
+    "sha256": "c660fd2d02ca3b579e7e117c65391ceecfab2cfbcd196d04989444e2ec7ed81f"
+  }
+}

@@ -54,3 +54,5 @@ grep -q 'GPU_DEMO_REMOVE.*yes' "${gpu_demo_tool}" ||
   fail "GPU demo removal lifecycle must remain explicitly gated"
 
 printf 'PASS: GPU demo StorageClass is explicit, one-replica, tagged and disposable\n'
+
+PYTHONDONTWRITEBYTECODE=1 python3 "${repo_dir}/scripts/local-quota-storage.py" manifest-check

@@ -1,0 +1,40 @@
+# Guest-cluster implementation profile for capacity-enforced local volumes.
+# The matching Talos worker configuration must bind-mount this exact BasePath.
+global:
+  analytics:
+    enabled: false
+
+fullnameOverride: ok-storage-local-quota-provisioner
+
+localpv:
+  name: ok-storage-local-quota
+  basePath: /var/openebs/local-quota
+  replicas: 1
+  privileged: true
+  nodeDeployment:
+    enabled: false
+
+hostpathClass:
+  name: ok-storage-local-quota
+  # The equivalent class is kept as a standalone demo asset so lifecycle
+  # checks can validate and remove it independently of the chart resources.
+  enabled: false
+  isDefaultClass: false
+  reclaimPolicy: Delete
+  basePath: /var/openebs/local-quota
+  xfsQuota:
+    enabled: true
+    softLimitGrace: "0%"
+    hardLimitGrace: "0%"
+  ext4Quota:
+    enabled: false
+
+helperPod:
+  image:
+    repository: openebs/linux-utils
+    tag: "4.6.0"
+  timeoutSecs: 120
+
+extraLabels:
+  openkubes.io/lifecycle: demo
+  openkubes.io/storage-profile: local-quota
