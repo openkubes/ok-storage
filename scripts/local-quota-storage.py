@@ -38,9 +38,20 @@ def image_check(docs):
             for i, item in enumerate(value): walk(item, path+'/'+str(i))
     walk(docs, 'local-quota')
 
+def image_pin_check(images, docs, writer, observer):
+    """The pin record's images must be the ones the manifest and the probes actually use."""
+    deploy = next(d for d in docs if d and d['kind'] == 'Deployment')
+    container = deploy['spec']['template']['spec']['containers'][0]
+    helper = next(e['value'] for e in container['env'] if e['name'] == 'OPENEBS_IO_HELPER_IMAGE')
+    used = {'provisioner': container['image'], 'helper': helper, 'writer': writer, 'observer': observer}
+    for key, image in used.items():
+        require(images.get(key) == image, 'pin record image differs: '+key+' record='+str(images.get(key))+' used='+image)
+
 def image_manifest_check():
     docs = list(yaml.safe_load_all((ROOT/'demo/local-quota-provisioner.yaml').read_text()))
     image_check(docs + [writer_pod('digest-check'), observer_pod('digest-check')])
+    pin = json.loads((ROOT/'demo/local-quota-pin.json').read_text())
+    image_pin_check(pin['images'], docs, WRITER_IMAGE, OBSERVER_IMAGE)
 
 
 class Failure(RuntimeError):
@@ -388,6 +399,16 @@ def self_test():
         else: raise Failure('unpinned image accepted: '+label)
         finally: target[key] = original
     image_check(docs + [writer_pod('positive'), observer_pod('positive')])
+    # The pin record must name the images actually used, negative first.
+    pin_images = json.loads((ROOT/'demo/local-quota-pin.json').read_text())['images']
+    for key in ('provisioner', 'helper', 'writer', 'observer'):
+        mutated = dict(pin_images); mutated[key] = mutated[key][:-1] + ('0' if mutated[key][-1] != '0' else '1')
+        try: image_pin_check(mutated, docs, WRITER_IMAGE, OBSERVER_IMAGE)
+        except Failure as e:
+            require(str(e).startswith('pin record image differs: '+key), 'wrong pin record negative failure')
+            print(f'PASS negative pin record {key}: differs from the image in use')
+        else: raise Failure('pin record drift accepted: '+key)
+    image_pin_check(pin_images, docs, WRITER_IMAGE, OBSERVER_IMAGE)
     good=dict(fstype='xfs',options=['prjquota'],userns=1,ready=True,bound=True,project=12,hard=SIZE,uid=1000,gid=1000,caps=0,outside_uid=65536,write_errno=28,written=SIZE,reset_errno=1,before=12,after=12,objects_gone=True,row_gone=True,free_bytes=SIZE*4,free_inodes=1000,initial_used=0)
     for key,bad,rule in [('fstype','ext4','worker XFS prjquota'),('options',[],'worker XFS prjquota'),('userns',0,'worker user namespaces'),('ready',False,'provisioner ready'),('bound',False,'PVC/PV/node binding'),('hard',SIZE*2,'project hard limit'),('project',0,'project hard limit'),('uid',0,'UID 1000 user namespace'),('gid',0,'UID 1000 user namespace'),('caps',1,'UID 1000 user namespace'),('outside_uid',0,'UID 1000 user namespace'),('initial_used',SIZE,'fresh project usage'),('free_bytes',0,'worker filesystem headroom'),('free_inodes',0,'worker filesystem headroom'),('write_errno',0,'capacity enforced'),('written',SIZE*2,'capacity enforced'),('written',1,'capacity enforced'),('reset_errno',0,'project reset rejected'),('after',0,'project reset rejected'),('objects_gone',False,'probe cleanup'),('row_gone',False,'probe cleanup')]:
         bad_record={**good,key:bad}

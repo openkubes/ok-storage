@@ -64,8 +64,8 @@ This OpenEBS Hostpath/XFS profile is one experimental implementation proof of
 runtime capacity enforcement; it does not extend or replace those contracts.
 
 Use **guest clusters only**. Workers need XFS mounted with `prjquota` and
-`user.max_user_namespaces > 0`. Enable the ok-cluster opt-in from commit
-`2bcab14` on `feat/ws-userns-mount`:
+`user.max_user_namespaces > 0`. Enable the ok-cluster `workloadUserNamespaces`
+opt-in (merged in openkubes/ok-cluster#409) in the guest's `cluster-config.yaml`:
 
 ```yaml
 workloadUserNamespaces:
@@ -73,7 +73,19 @@ workloadUserNamespaces:
   provisionerBasePath: /var/openebs/local-quota
 ```
 
-That path must equal the StorageClass BasePath. Workspace Pods **must use
+That path must equal the StorageClass BasePath. After `local-quota-apply`, run the
+ok-cluster cross-repo check before `local-quota-verify`:
+
+```bash
+make verify-workload-user-namespaces CLUSTER=<guest> GUEST_KUBECONFIG=<guest kubeconfig>   # in ok-cluster
+```
+
+It must print `PASS: worker provisionerBasePath matches ok-storage-local-quota BasePath`.
+`SKIP` means the opt-in is disabled for that cluster, which this profile does not
+support. The check compares the declared `provisionerBasePath` with the StorageClass
+`BasePath`; `local-quota-verify` then covers the live mount and quota on one worker.
+
+Workspace Pods **must use
 `hostUsers: false`**: a UID 1000 writer without a user namespace can reset its
 project ID and bypass the quota. The local-path provisioner cannot be
 idmap-mounted. The provisioner namespace is labelled PodSecurity `privileged`
@@ -84,9 +96,10 @@ The OpenEBS `dynamic-localpv-provisioner` chart is pinned to 4.6.0 in
 rendering and vendored alongside `demo/local-quota-provisioner.yaml`;
 `make verify` checks the archive offline. Apply consumes that rendered manifest,
 so it requires neither Helm nor a network fetch. Values are recorded in
-`values/local-quota-values.yaml`. Every profile workload image (provisioner,
-OpenEBS helper, Python writer, and privileged observer) is pinned as
-`repo:tag@sha256:digest`. The pin record lists the supplied image index digests
+`values/local-quota-values.yaml`. Every image this profile deploys or its verify
+creates (provisioner, OpenEBS helper, Python writer, and privileged observer) is
+pinned as `repo:tag@sha256:digest`; test images of the other profiles
+(`tests/verify-*.yaml`) are outside this profile. The pin record lists the supplied image index digests
 resolved on 2026-10-13 with `skopeo inspect`, along with the commands to reproduce
 the render byte-for-byte. `make verify` rejects images without digests in both
 the rendered manifest and the generated proof probes. Index digests retain
