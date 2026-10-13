@@ -91,6 +91,15 @@ project ID and bypass the quota. The local-path provisioner cannot be
 idmap-mounted. The provisioner namespace is labelled PodSecurity `privileged`
 because OpenEBS helper Pods require it; workspace writers remain unprivileged.
 
+The pinned chart's ClusterRole grants the provisioner ServiceAccount
+`ok-storage-local-quota/ok-storage-local-quota-provisioner` all verbs on `pods`,
+`namespaces`, `events` and `endpoints` in every namespace (it creates helper Pods
+on the volume's node). That ServiceAccount can therefore start a Pod in any
+namespace under any ServiceAccount there, which is platform authority: treat it
+like other cluster add-on controllers. The openkubes DeveloperWorkspace live proof
+lists it as an expected holder of Pod creation in `crossplane-system` when this
+profile is installed. Narrowing the chart's RBAC is not part of this profile.
+
 The OpenEBS `dynamic-localpv-provisioner` chart is pinned to 4.6.0 in
 `demo/local-quota-pin.json`. The downloaded archive is SHA256-checked before
 rendering and vendored alongside `demo/local-quota-provisioner.yaml`;
