@@ -141,8 +141,16 @@ os.close(f);print(json.dumps(r),flush=True)
 def pod(name, spec):
     return {'apiVersion':'v1','kind':'Pod','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'restartPolicy':'Never','automountServiceAccountToken':False,**spec}}
 
-def writer_pod(name):
-    return pod(name,{'hostUsers':False,'securityContext':{'runAsUser':1000,'runAsGroup':1000,'fsGroup':1000},'containers':[{'name':'writer','image':WRITER_IMAGE,'command':['sleep','3600'],'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'volumeMounts':[{'name':'data','mountPath':'/data'}]}],'volumes':[{'name':'data','persistentVolumeClaim':{'claimName':name}}]})
+def probe_pair(name, consumer):
+    """The probe PVC and the writer Pod that must consume exactly that claim."""
+    claim = {'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'storageClassName':CLASS,'accessModes':['ReadWriteOnce'],'resources':{'requests':{'storage':'64Mi'}}}}
+    writer = writer_pod(consumer, name)
+    require([v['persistentVolumeClaim']['claimName'] for v in writer['spec']['volumes'] if 'persistentVolumeClaim' in v] == [name],
+            'writer probe must consume the probe PVC '+name)
+    return claim, writer
+
+def writer_pod(name, claim=None):
+    return pod(name,{'hostUsers':False,'securityContext':{'runAsUser':1000,'runAsGroup':1000,'fsGroup':1000},'containers':[{'name':'writer','image':WRITER_IMAGE,'command':['sleep','3600'],'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'volumeMounts':[{'name':'data','mountPath':'/data'}]}],'volumes':[{'name':'data','persistentVolumeClaim':{'claimName':claim or name}}]})
 
 def observer_pod(name, node=None):
     obj = pod(name,{'containers':[{'name':'observer','image':OBSERVER_IMAGE,'terminationMessagePath':'/tmp/termination-log','command':['sh','-ec','sleep 3600'],'securityContext':{'privileged':True},'volumeMounts':[{'name':'base','mountPath':'/data','readOnly':True},{'name':'dev','mountPath':'/dev','readOnly':True},{'name':'userns','mountPath':'/host-userns','readOnly':True}]}],'volumes':[{'name':'base','hostPath':{'path':BASE,'type':'DirectoryOrCreate'}},{'name':'dev','hostPath':{'path':'/dev','type':'Directory'}},{'name':'userns','hostPath':{'path':'/proc/sys/user/max_user_namespaces','type':'File'}}]})
@@ -225,8 +233,9 @@ def verify(args):
     def observe(command):
         return k(args, 'exec', '-n', NAMESPACE, observer, '--', 'sh', '-ec', command)
     try:
-        create(args, {'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'storageClassName':CLASS,'accessModes':['ReadWriteOnce'],'resources':{'requests':{'storage':'64Mi'}}}},created)
-        create(args,writer_pod(consumer),created)
+        claim, writer = probe_pair(name, consumer)
+        create(args,claim,created)
+        create(args,writer,created)
         node=wait_until(lambda: get(args,'pvc',name,'-n',NAMESPACE)['metadata'].get('annotations', {}).get('volume.kubernetes.io/selected-node'), 'probe worker selection (schedulable guest worker required)')
         selected_node=node
         create_observer(args,observer,node,created)
@@ -399,6 +408,16 @@ def self_test():
         else: raise Failure('unpinned image accepted: '+label)
         finally: target[key] = original
     image_check(docs + [writer_pod('positive'), observer_pod('positive')])
+    claim, writer = probe_pair('pair-check', 'pair-check-writer')
+    require(writer['spec']['volumes'][0]['persistentVolumeClaim']['claimName'] == claim['metadata']['name'], 'probe pair mismatch')
+    try:
+        bad = writer_pod('pair-check-writer')
+        require([v['persistentVolumeClaim']['claimName'] for v in bad['spec']['volumes'] if 'persistentVolumeClaim' in v] == ['pair-check'],
+                'writer probe must consume the probe PVC pair-check')
+    except Failure as e:
+        print('PASS negative probe pair: '+str(e))
+    else: raise Failure('writer claiming its own name accepted')
+    print('PASS probe writer consumes the probe PVC')
     # The pin record must name the images actually used, negative first.
     pin_images = json.loads((ROOT/'demo/local-quota-pin.json').read_text())['images']
     for key in ('provisioner', 'helper', 'writer', 'observer'):
