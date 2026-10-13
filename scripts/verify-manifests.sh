@@ -55,4 +55,5 @@ grep -q 'GPU_DEMO_REMOVE.*yes' "${gpu_demo_tool}" ||
 
 printf 'PASS: GPU demo StorageClass is explicit, one-replica, tagged and disposable\n'
 
+PYTHONDONTWRITEBYTECODE=1 python3 "${repo_dir}/scripts/local-quota-storage.py" image-check
 PYTHONDONTWRITEBYTECODE=1 python3 "${repo_dir}/scripts/local-quota-storage.py" manifest-check

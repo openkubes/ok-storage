@@ -16,12 +16,32 @@ import shutil
 import time
 import uuid
 import yaml
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLASS = 'ok-storage-local-quota'
 NAMESPACE = 'ok-storage-local-quota'
 BASE = '/var/openebs/local-quota'
 SIZE = 64 * 1024 * 1024
+WRITER_IMAGE = 'docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1'
+OBSERVER_IMAGE = 'docker.io/openebs/linux-utils:4.6.0@sha256:a3043d266b1c06fb42377ced0c3fc190c66e1e83ae1efda7670ed73feb4ede14'
+
+def image_check(docs):
+    def walk(value, path):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == 'image' or (key == 'value' and value.get('name') == 'OPENEBS_IO_HELPER_IMAGE'):
+                    require(isinstance(item, str) and re.fullmatch(r'[^\s@]+:[^\s@]+@sha256:[0-9a-f]{64}', item) is not None,
+                            'image digest required: '+path+'/'+key+'='+str(item))
+                walk(item, path+'/'+key)
+        elif isinstance(value, list):
+            for i, item in enumerate(value): walk(item, path+'/'+str(i))
+    walk(docs, 'local-quota')
+
+def image_manifest_check():
+    docs = list(yaml.safe_load_all((ROOT/'demo/local-quota-provisioner.yaml').read_text()))
+    image_check(docs + [writer_pod('digest-check'), observer_pod('digest-check')])
+
 
 class Failure(RuntimeError):
     pass
@@ -47,6 +67,7 @@ def manifest_check():
     require(hashlib.sha256(archive.read_bytes()).hexdigest() == pin['sha256'], 'chart SHA256')
     for filename, key in [('demo/local-quota-provisioner.yaml', 'provisioner_sha256'), ('demo/ok-storage-local-quota.yaml', 'class_sha256'), ('values/local-quota-values.yaml', 'values_sha256')]:
         require(hashlib.sha256((ROOT/filename).read_bytes()).hexdigest() == pin[key], 'pinned file drift: '+filename)
+    image_manifest_check()
     require(pin['version'] == '4.6.0' and pin['url'] == 'https://openebs.github.io/dynamic-localpv-provisioner/localpv-provisioner-4.6.0.tgz', 'chart pin')
     docs = list(yaml.safe_load_all((ROOT/'demo/local-quota-provisioner.yaml').read_text()))
     sc = yaml.safe_load((ROOT/'demo/ok-storage-local-quota.yaml').read_text())
@@ -109,8 +130,51 @@ os.close(f);print(json.dumps(r),flush=True)
 def pod(name, spec):
     return {'apiVersion':'v1','kind':'Pod','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'restartPolicy':'Never','automountServiceAccountToken':False,**spec}}
 
-def create(args, obj):
+def writer_pod(name):
+    return pod(name,{'hostUsers':False,'securityContext':{'runAsUser':1000,'runAsGroup':1000,'fsGroup':1000},'containers':[{'name':'writer','image':WRITER_IMAGE,'command':['sleep','3600'],'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'volumeMounts':[{'name':'data','mountPath':'/data'}]}],'volumes':[{'name':'data','persistentVolumeClaim':{'claimName':name}}]})
+
+def observer_pod(name, node=None):
+    obj = pod(name,{'containers':[{'name':'observer','image':OBSERVER_IMAGE,'terminationMessagePath':'/tmp/termination-log','command':['sh','-ec','sleep 3600'],'securityContext':{'privileged':True},'volumeMounts':[{'name':'base','mountPath':'/data','readOnly':True},{'name':'dev','mountPath':'/dev','readOnly':True},{'name':'userns','mountPath':'/host-userns','readOnly':True}]}],'volumes':[{'name':'base','hostPath':{'path':BASE,'type':'DirectoryOrCreate'}},{'name':'dev','hostPath':{'path':'/dev','type':'Directory'}},{'name':'userns','hostPath':{'path':'/proc/sys/user/max_user_namespaces','type':'File'}}]})
+    if node is not None: obj['spec']['nodeName'] = node
+    return obj
+
+def proof_intent():
+    require(os.environ.get('LOCAL_QUOTA_VERIFY') == 'operator-proof',
+            'set LOCAL_QUOTA_VERIFY=operator-proof: operator-only proof in a disposable/authorized environment; creates a privileged hostPath observer, not a tenant readiness check')
+    expected = os.environ.get('LOCAL_QUOTA_EXPECTED_CONTEXT', '').strip()
+    require(bool(expected), 'set LOCAL_QUOTA_EXPECTED_CONTEXT to the explicitly authorized kubeconfig current-context')
+    return expected
+
+def proof_prerequisites(args):
+    expected = proof_intent()
+    context = k(args, 'config', 'current-context').strip()
+    require(context == expected, 'authorized context mismatch: current-context must equal LOCAL_QUOTA_EXPECTED_CONTEXT')
+    review = {'apiVersion':'authorization.k8s.io/v1','kind':'SelfSubjectAccessReview',
+              'spec':{'resourceAttributes':{'namespace':NAMESPACE,'verb':'create','group':'','resource':'pods'}}}
+    status = json.loads(k(args, 'create', '-f', '-', '-o', 'json', data=json.dumps(review))).get('status', {})
+    require(status.get('allowed') is True and not status.get('denied', False) and not status.get('evaluationError'),
+            'operator proof requires SelfSubjectAccessReview allowing Pod create in '+NAMESPACE)
+    # RBAC has no "privileged Pod" verb. Check admission using the actual observer
+    # spec too, without persisting a Pod or contacting a kubelet.
+    k(args, 'create', '--dry-run=server', '-f', '-', '-o', 'json',
+      data=json.dumps(observer_pod('quota-proof-preflight-'+uuid.uuid4().hex[:12])))
+    print('PASS operator proof context, Pod-create authorization and privileged hostPath admission dry-run')
+
+def create(args, obj, created):
+    # A failed response does not mean the API server failed to persist the object.
+    kind = 'pod' if obj['kind'] == 'Pod' else 'pvc'
+    created.append((kind, obj['metadata']['name']))
     k(args, 'create', '-f', '-', data=json.dumps(obj))
+
+def delete_probe(args, kind, name, created):
+    k(args, 'delete', kind, name, '-n', NAMESPACE, '--ignore-not-found', '--wait=true', '--timeout=180s')
+    created.remove((kind, name))
+
+def create_observer(args, name, node, created):
+    obj = observer_pod(name, node)
+    # Node-sensitive admission must check the exact object we will persist.
+    k(args, 'create', '--dry-run=server', '-f', '-', '-o', 'json', data=json.dumps(obj))
+    create(args, obj, created)
 
 def wait_until(fn, rule, seconds=180):
     deadline = time.monotonic() + seconds
@@ -132,6 +196,7 @@ def rows(text):
     return result
 
 def verify(args):
+    proof_prerequisites(args)
     deployment = manifest_check()
     check_class(get(args, 'storageclass', CLASS))
     ns = get(args, 'namespace', NAMESPACE)
@@ -145,19 +210,15 @@ def verify(args):
     project = None
     record = {'ready':True}
     def delete(kind, n):
-        k(args, 'delete', kind, n, '-n', NAMESPACE, '--wait=true', '--timeout=180s')
-        created.remove((kind,n))
+        delete_probe(args, kind, n, created)
     def observe(command):
         return k(args, 'exec', '-n', NAMESPACE, observer, '--', 'sh', '-ec', command)
     try:
-        create(args, {'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'storageClassName':CLASS,'accessModes':['ReadWriteOnce'],'resources':{'requests':{'storage':'64Mi'}}}})
-        created.append(('pvc',name))
-        create(args,pod(consumer,{'hostUsers':False,'securityContext':{'runAsUser':1000,'runAsGroup':1000,'fsGroup':1000},'containers':[{'name':'writer','image':'python:3.12-slim','command':['sleep','3600'],'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'volumeMounts':[{'name':'data','mountPath':'/data'}]}],'volumes':[{'name':'data','persistentVolumeClaim':{'claimName':name}}]}))
-        created.append(('pod',consumer))
+        create(args, {'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':name,'namespace':NAMESPACE},'spec':{'storageClassName':CLASS,'accessModes':['ReadWriteOnce'],'resources':{'requests':{'storage':'64Mi'}}}},created)
+        create(args,writer_pod(consumer),created)
         node=wait_until(lambda: get(args,'pvc',name,'-n',NAMESPACE)['metadata'].get('annotations', {}).get('volume.kubernetes.io/selected-node'), 'probe worker selection (schedulable guest worker required)')
         selected_node=node
-        create(args,pod(observer,{'nodeName':node,'containers':[{'name':'observer','image':'openebs/linux-utils:4.6.0','terminationMessagePath':'/tmp/termination-log','command':['sh','-ec','sleep 3600'],'securityContext':{'privileged':True},'volumeMounts':[{'name':'base','mountPath':'/data','readOnly':True},{'name':'dev','mountPath':'/dev','readOnly':True},{'name':'userns','mountPath':'/host-userns','readOnly':True}]}],'volumes':[{'name':'base','hostPath':{'path':BASE,'type':'DirectoryOrCreate'}},{'name':'dev','hostPath':{'path':'/dev','type':'Directory'}},{'name':'userns','hostPath':{'path':'/proc/sys/user/max_user_namespaces','type':'File'}}]}))
-        created.append(('pod',observer))
+        create_observer(args,observer,node,created)
         try:
             k(args,'wait','-n',NAMESPACE,'--for=condition=Ready','pod/'+observer,'--timeout=180s')
         except Failure as e:
@@ -240,6 +301,93 @@ def lifecycle(args):
 
 def self_test():
     global ROOT
+    args = argparse.Namespace(kubeconfig='offline-only')
+    authorized = {'LOCAL_QUOTA_VERIFY':'operator-proof', 'LOCAL_QUOTA_EXPECTED_CONTEXT':'disposable-proof'}
+    for label, env, context, status, admission, rule in [
+        ('proof mode absent', {}, 'disposable-proof', {'allowed':True}, True, 'set LOCAL_QUOTA_VERIFY=operator-proof'),
+        ('proof mode wrong', {**authorized,'LOCAL_QUOTA_VERIFY':'yes'}, 'disposable-proof', {'allowed':True}, True, 'set LOCAL_QUOTA_VERIFY=operator-proof'),
+        ('context absent', {'LOCAL_QUOTA_VERIFY':'operator-proof'}, 'disposable-proof', {'allowed':True}, True, 'set LOCAL_QUOTA_EXPECTED_CONTEXT'),
+        ('context mismatch', authorized, 'other', {'allowed':True}, True, 'authorized context mismatch'),
+        ('SSAR denied', authorized, 'disposable-proof', {'allowed':False}, True, 'operator proof requires SelfSubjectAccessReview'),
+        ('SSAR missing', authorized, 'disposable-proof', {}, True, 'operator proof requires SelfSubjectAccessReview'),
+        ('SSAR evaluation error', authorized, 'disposable-proof', {'allowed':True,'evaluationError':'failed'}, True, 'operator proof requires SelfSubjectAccessReview'),
+        ('SSAR conflicting denial', authorized, 'disposable-proof', {'allowed':True,'denied':True}, True, 'operator proof requires SelfSubjectAccessReview'),
+        ('privileged admission denied', authorized, 'disposable-proof', {'allowed':True}, False, 'privileged observer admission denied'),
+    ]:
+        calls = []
+        def fake_k(args, *cmd, data=None):
+            calls.append(cmd)
+            if cmd == ('config', 'current-context'): return context
+            obj = json.loads(data)
+            if obj['kind'] == 'SelfSubjectAccessReview':
+                require(obj['spec']['resourceAttributes'] == {'namespace':NAMESPACE,'verb':'create','group':'','resource':'pods'}, 'SSAR scope')
+                return json.dumps({'status':status})
+            require('--dry-run=server' in cmd and obj['kind'] == 'Pod' and obj['spec']['containers'][0]['securityContext']['privileged'] is True, 'unexpected persistent object create')
+            if not admission: raise Failure('privileged observer admission denied')
+            return '{}'
+        with patch.dict(os.environ, env, clear=True), patch(__name__+'.k', side_effect=fake_k):
+            try: verify(args)
+            except Failure as e:
+                require(str(e).startswith(rule), 'wrong proof guard failure: '+str(e))
+                require(label not in ('proof mode absent','proof mode wrong','context absent') or not calls, 'intent guard contacted kubectl')
+                print(f'PASS negative {label}: {e}; no persistent object create')
+            else: raise Failure('proof guard accepted: '+label)
+    with patch.dict(os.environ, authorized, clear=True), patch(__name__+'.k', side_effect=fake_k):
+        context='disposable-proof';status={'allowed':True};admission=True
+        proof_prerequisites(args)
+    with patch(__name__+'.k', side_effect=Failure('node-bound observer admission denied')), patch(__name__+'.create') as persist:
+        try: create_observer(args, 'node-proof', 'worker-a', [])
+        except Failure as e:
+            require(str(e) == 'node-bound observer admission denied', 'wrong node-bound admission failure')
+            require(not persist.called, 'observer persisted after denied node-bound admission')
+            print('PASS negative node-bound observer admission: no observer create')
+        else: raise Failure('denied node-bound observer persisted')
+    with patch(__name__+'.k', return_value='{}') as dry_run, patch(__name__+'.create') as persist:
+        create_observer(args, 'node-proof', 'worker-a', [])
+        submitted = json.loads(dry_run.call_args.kwargs['data'])
+        require('--dry-run=server' in dry_run.call_args.args and submitted == persist.call_args.args[1]
+                and submitted['spec']['nodeName'] == 'worker-a', 'node-bound admission object drift')
+        print('PASS exact node-bound observer dry-run matches persisted object')
+    for obj in [
+        {'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':'ambiguous-pvc','namespace':NAMESPACE}},
+        writer_pod('ambiguous-writer'), observer_pod('ambiguous-observer', 'worker-a'),
+    ]:
+        pending = []; persisted = []
+        def ambiguous_k(args, *cmd, data=None):
+            if cmd[0] == 'create':
+                persisted.append(json.loads(data)['metadata']['name'])
+                raise Failure('create response lost after persistence')
+            require(cmd[0] == 'delete' and '--ignore-not-found' in cmd, 'ambiguous create cleanup command')
+            persisted.remove(cmd[2]);return ''
+        with patch(__name__+'.k', side_effect=ambiguous_k):
+            try: create(args, obj, pending)
+            except Failure as e:
+                require(str(e) == 'create response lost after persistence' and len(pending) == 1, 'lost response missing cleanup obligation')
+            else: raise Failure('ambiguous create negative did not fail')
+            kind, name = pending[0]
+            delete_probe(args, kind, name, pending)
+            require(not persisted and not pending, 'ambiguous create cleanup failed')
+            print('PASS negative persisted-then-error '+obj['metadata']['name']+': cleanup removes object')
+    # Feed the exact generated probe specs to the image assertion, negative first.
+    docs = list(yaml.safe_load_all((ROOT/'demo/local-quota-provisioner.yaml').read_text()))
+    deploy = next(d for d in docs if d and d['kind'] == 'Deployment')
+    container = deploy['spec']['template']['spec']['containers'][0]
+    helper = next(e for e in container['env'] if e['name'] == 'OPENEBS_IO_HELPER_IMAGE')
+    for label, obj, target, key in [
+        ('provisioner', docs, container, 'image'),
+        ('helper', docs, helper, 'value'),
+        ('writer', writer_pod('negative'), None, 'image'),
+        ('observer', observer_pod('negative'), None, 'image'),
+    ]:
+        if target is None: target = obj['spec']['containers'][0]
+        original = target[key];target[key] = original.split('@')[0]
+        try: image_check(obj)
+        except Failure as e:
+            require(str(e).startswith('image digest required:'), 'wrong image negative failure')
+            print(f'PASS negative image {label}: {e}')
+        else: raise Failure('unpinned image accepted: '+label)
+        finally: target[key] = original
+    image_check(docs + [writer_pod('positive'), observer_pod('positive')])
     good=dict(fstype='xfs',options=['prjquota'],userns=1,ready=True,bound=True,project=12,hard=SIZE,uid=1000,gid=1000,caps=0,outside_uid=65536,write_errno=28,written=SIZE,reset_errno=1,before=12,after=12,objects_gone=True,row_gone=True,free_bytes=SIZE*4,free_inodes=1000,initial_used=0)
     for key,bad,rule in [('fstype','ext4','worker XFS prjquota'),('options',[],'worker XFS prjquota'),('userns',0,'worker user namespaces'),('ready',False,'provisioner ready'),('bound',False,'PVC/PV/node binding'),('hard',SIZE*2,'project hard limit'),('project',0,'project hard limit'),('uid',0,'UID 1000 user namespace'),('gid',0,'UID 1000 user namespace'),('caps',1,'UID 1000 user namespace'),('outside_uid',0,'UID 1000 user namespace'),('initial_used',SIZE,'fresh project usage'),('free_bytes',0,'worker filesystem headroom'),('free_inodes',0,'worker filesystem headroom'),('write_errno',0,'capacity enforced'),('written',SIZE*2,'capacity enforced'),('written',1,'capacity enforced'),('reset_errno',0,'project reset rejected'),('after',0,'project reset rejected'),('objects_gone',False,'probe cleanup'),('row_gone',False,'probe cleanup')]:
         bad_record={**good,key:bad}
@@ -286,7 +434,9 @@ def self_test():
     print('PASS local quota positive records and pinned offline manifests')
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['apply','verify','remove','self-test','manifest-check']);parser.add_argument('--kubeconfig');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['apply','verify','remove','self-test','manifest-check','image-check']);parser.add_argument('--kubeconfig');args=parser.parse_args()
+    if args.command=='image-check':image_manifest_check();print('PASS local quota workload and probe image digests');return
+    if args.command=='verify':proof_intent()
     if args.command=='self-test':return self_test()
     if args.command=='manifest-check':manifest_check();print('PASS local quota pinned manifests');return
     require(bool(args.kubeconfig and Path(args.kubeconfig).is_file()),'explicit guest --kubeconfig file required')

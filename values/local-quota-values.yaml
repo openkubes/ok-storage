@@ -11,6 +11,10 @@ localpv:
   basePath: /var/openebs/local-quota
   replicas: 1
   privileged: true
+  image:
+    registry: docker.io/
+    repository: openebs/provisioner-localpv
+    tag: "4.6.0@sha256:99f5116f5cb83fb9d046ef5ff5b8ea98da90e7da5250d7b101bd650662238a0a"
   nodeDeployment:
     enabled: false
 
@@ -32,7 +36,7 @@ hostpathClass:
 helperPod:
   image:
     repository: openebs/linux-utils
-    tag: "4.6.0"
+    tag: "4.6.0@sha256:a3043d266b1c06fb42377ced0c3fc190c66e1e83ae1efda7670ed73feb4ede14"
   timeoutSecs: 120
 
 extraLabels:

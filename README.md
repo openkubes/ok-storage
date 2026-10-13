@@ -58,6 +58,11 @@ there is no replication or online expansion. ADR-Platform-009:38 remains an open
 question. The manifests live in `demo/`, beside the GPU demo, to keep them separate
 from `storageclasses/` and the stable interface.
 
+The provider-neutral runtime-capacity contract in ADR-Platform-039 section 4
+and the class contract in ADR-Platform-009 define the guarantees consumers require.
+This OpenEBS Hostpath/XFS profile is one experimental implementation proof of
+runtime capacity enforcement; it does not extend or replace those contracts.
+
 Use **guest clusters only**. Workers need XFS mounted with `prjquota` and
 `user.max_user_namespaces > 0`. Enable the ok-cluster opt-in from commit
 `2bcab14` on `feat/ws-userns-mount`:
@@ -79,17 +84,40 @@ The OpenEBS `dynamic-localpv-provisioner` chart is pinned to 4.6.0 in
 rendering and vendored alongside `demo/local-quota-provisioner.yaml`;
 `make verify` checks the archive offline. Apply consumes that rendered manifest,
 so it requires neither Helm nor a network fetch. Values are recorded in
-`values/local-quota-values.yaml`. Python 3 and PyYAML are required for the tools;
+`values/local-quota-values.yaml`. Every profile workload image (provisioner,
+OpenEBS helper, Python writer, and privileged observer) is pinned as
+`repo:tag@sha256:digest`. The pin record lists the supplied image index digests
+resolved on 2026-10-13 with `skopeo inspect`, along with the commands to reproduce
+the render byte-for-byte. `make verify` rejects images without digests in both
+the rendered manifest and the generated proof probes. Index digests retain
+multi-architecture selection while fixing the referenced image index. Python 3 and PyYAML are required for the tools;
 live lifecycle commands also require kubectl and cluster image pulls.
 
 ```bash
 LOCAL_QUOTA_APPLY=yes make local-quota-apply \
   LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
-make local-quota-verify \
+LOCAL_QUOTA_VERIFY=operator-proof LOCAL_QUOTA_EXPECTED_CONTEXT="disposable-guest-context" \
+  make local-quota-verify \
   LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
 LOCAL_QUOTA_REMOVE=yes make local-quota-remove \
   LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
 ```
+
+Verify is an **operator-only proof for disposable or explicitly authorized
+environments**, **NOT a tenant-callable readiness check**. Tenants consume the
+StorageClass only. Assert `LOCAL_QUOTA_VERIFY=operator-proof` and set
+`LOCAL_QUOTA_EXPECTED_CONTEXT` to the explicitly authorized kubeconfig
+current-context name (replace the example above). Missing intent variables fail
+before any kubectl invocation. Context equality, a live SelfSubjectAccessReview
+allowing Pod creation in `ok-storage-local-quota`, and server-side dry-run
+admission of the privileged hostPath observer all pass before any probe is
+persisted. After worker selection, the exact node-bound observer is also
+server-dry-run immediately before its creation; rejection triggers probe cleanup.
+SSAR checks RBAC Pod creation, not privilege; the dry-run checks the
+actual observer spec against admission. Failures stop the proof. These are
+operator intent and authorization prerequisites, not a new access-control
+boundary: a caller with sufficient permissions can deliberately assert both
+variables, and admission/permissions may change after preflight.
 
 These targets never fall back to the host `KUBECONFIG_FILE`. Verify **mutates**
 the guest cluster: it creates a uniquely named 64Mi PVC and UID/GID 1000 Pod

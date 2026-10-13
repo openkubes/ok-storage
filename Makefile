@@ -80,9 +80,9 @@ gpu-demo-remove:
 local-quota-apply:
 	LOCAL_QUOTA_APPLY=$(LOCAL_QUOTA_APPLY) python3 scripts/local-quota-storage.py apply --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"
 
-## local-quota-verify: create disposable probes, prove enforcement, and clean them up
+## local-quota-verify: operator-only proof in disposable/authorized environments; creates privileged hostPath observer; NOT tenant-callable readiness (tenants consume StorageClass only)
 local-quota-verify:
-	python3 scripts/local-quota-storage.py verify --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"
+	LOCAL_QUOTA_VERIFY="$(LOCAL_QUOTA_VERIFY)" LOCAL_QUOTA_EXPECTED_CONTEXT="$(LOCAL_QUOTA_EXPECTED_CONTEXT)" python3 scripts/local-quota-storage.py verify --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"
 
 ## local-quota-remove: remove the unused quota profile (namespace retained)
 local-quota-remove:

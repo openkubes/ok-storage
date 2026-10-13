@@ -138,7 +138,7 @@ spec:
         {}
       containers:
       - name: ok-storage-local-quota-provisioner
-        image: "docker.io/openebs/provisioner-localpv:4.6.0"
+        image: "docker.io/openebs/provisioner-localpv:4.6.0@sha256:99f5116f5cb83fb9d046ef5ff5b8ea98da90e7da5250d7b101bd650662238a0a"
         imagePullPolicy: IfNotPresent
         resources:
           null
@@ -187,7 +187,7 @@ spec:
         - name: OPENEBS_IO_IMAGE_PULL_POLICY
           value: "IfNotPresent"
         - name: OPENEBS_IO_HELPER_IMAGE
-          value: "docker.io/openebs/linux-utils:4.6.0"
+          value: "docker.io/openebs/linux-utils:4.6.0@sha256:a3043d266b1c06fb42377ced0c3fc190c66e1e83ae1efda7670ed73feb4ede14"
         - name: OPENEBS_IO_HELPER_POD_HOST_NETWORK
           value: "false"
         - name: OPENEBS_IO_INSTALLER_TYPE
