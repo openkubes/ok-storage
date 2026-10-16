@@ -1,0 +1,38 @@
+{
+  "version": "4.6.0",
+  "url": "https://openebs.github.io/dynamic-localpv-provisioner/localpv-provisioner-4.6.0.tgz",
+  "sha256": "3e6e0661462abbecf944399e2624b0b22249ac386e5d43473f6c1cc8a4337133",
+  "provisioner_sha256": "93a9370c1239928ba5bd5c6f84fb238438933f2652fdd5f7cb921f21fbf8292f",
+  "class_sha256": "9b2d58a8de7e1e1104f5803784324062b10cfcd0855e105680489e25022fb323",
+  "values_sha256": "50d220044311e104e37f05f08f29f23de23949e7cbe46f358cfbbec8f80f359d",
+  "helm_template_command": "helm template ok-storage-local-quota demo/local-quota-chart-4.6.0.tgz --namespace ok-storage-local-quota -f values/local-quota-values.yaml",
+  "render_command": "{ printf '%s\\n' 'apiVersion: v1' 'kind: Namespace' 'metadata:' '  name: ok-storage-local-quota' '  labels:' '    openkubes.io/lifecycle: demo' '    openkubes.io/storage-profile: local-quota' '    pod-security.kubernetes.io/enforce: privileged' '    pod-security.kubernetes.io/audit: privileged' '    pod-security.kubernetes.io/warn: privileged' '---'; helm template ok-storage-local-quota demo/local-quota-chart-4.6.0.tgz --namespace ok-storage-local-quota -f values/local-quota-values.yaml; } > demo/local-quota-provisioner.yaml",
+  "chart": {
+    "name": "localpv-provisioner",
+    "version": "4.6.0",
+    "url": "https://openebs.github.io/dynamic-localpv-provisioner/localpv-provisioner-4.6.0.tgz",
+    "sha256": "3e6e0661462abbecf944399e2624b0b22249ac386e5d43473f6c1cc8a4337133"
+  },
+  "images": {
+    "digestType": "OCI image index digest",
+    "resolvedAt": "2026-10-13",
+    "provisioner": "docker.io/openebs/provisioner-localpv:4.6.0@sha256:99f5116f5cb83fb9d046ef5ff5b8ea98da90e7da5250d7b101bd650662238a0a",
+    "helper": "docker.io/openebs/linux-utils:4.6.0@sha256:a3043d266b1c06fb42377ced0c3fc190c66e1e83ae1efda7670ed73feb4ede14",
+    "writer": "docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+    "observer": "docker.io/openebs/linux-utils:4.6.0@sha256:a3043d266b1c06fb42377ced0c3fc190c66e1e83ae1efda7670ed73feb4ede14",
+    "resolutionCommands": [
+      "skopeo inspect docker://docker.io/openebs/provisioner-localpv:4.6.0 --format '{{.Digest}}'",
+      "skopeo inspect docker://docker.io/openebs/linux-utils:4.6.0 --format '{{.Digest}}'",
+      "skopeo inspect docker://docker.io/library/python:3.12-slim --format '{{.Digest}}'"
+    ]
+  },
+  "provisionerSourceCommit": "7426127d566ac249dde04cad9e22a66f80049e0f",
+  "render": {
+    "helmVersion": "v3.11.0+g472c573",
+    "releaseName": "ok-storage-local-quota",
+    "namespace": "ok-storage-local-quota",
+    "values": "values/local-quota-values.yaml",
+    "manifest": "demo/local-quota-provisioner.yaml",
+    "sha256": "93a9370c1239928ba5bd5c6f84fb238438933f2652fdd5f7cb921f21fbf8292f"
+  }
+}

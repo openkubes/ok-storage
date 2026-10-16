@@ -50,6 +50,122 @@ The tool merges its tag into the existing Longhorn node tags and removes only
 that tag during cleanup. It never changes `ok-storage-block`, its replica
 count, or existing volumes.
 
+### Guest-cluster local quota implementation profile
+
+`ok-storage-local-quota` is an experimental, non-contract implementation profile,
+not a fourth storage contract. It provides fixed-size, node-local Hostpath volumes;
+there is no replication or online expansion. ADR-Platform-009:38 remains an open
+question. The manifests live in `demo/`, beside the GPU demo, to keep them separate
+from `storageclasses/` and the stable interface.
+
+The provider-neutral runtime-capacity contract in ADR-Platform-039 section 4
+and the class contract in ADR-Platform-009 define the guarantees consumers require.
+This OpenEBS Hostpath/XFS profile is one experimental implementation proof of
+runtime capacity enforcement; it does not extend or replace those contracts.
+
+Use **guest clusters only**. Workers need XFS mounted with `prjquota` and
+`user.max_user_namespaces > 0`. Enable the ok-cluster `workloadUserNamespaces`
+opt-in (merged in openkubes/ok-cluster#409) in the guest's `cluster-config.yaml`:
+
+```yaml
+workloadUserNamespaces:
+  enabled: true
+  provisionerBasePath: /var/openebs/local-quota
+```
+
+That path must equal the StorageClass BasePath. After `local-quota-apply`, run the
+ok-cluster cross-repo check before `local-quota-verify`:
+
+```bash
+make verify-workload-user-namespaces CLUSTER=<guest> GUEST_KUBECONFIG=<guest kubeconfig>   # in ok-cluster
+```
+
+It must print `PASS: worker provisionerBasePath matches ok-storage-local-quota BasePath`.
+`SKIP` means the opt-in is disabled for that cluster, which this profile does not
+support. The check compares the declared `provisionerBasePath` with the StorageClass
+`BasePath`; `local-quota-verify` then covers the live mount and quota on one worker.
+
+Workspace Pods **must use
+`hostUsers: false`**: a UID 1000 writer without a user namespace can reset its
+project ID and bypass the quota. The local-path provisioner cannot be
+idmap-mounted. The provisioner namespace is labelled PodSecurity `privileged`
+because OpenEBS helper Pods require it; workspace writers remain unprivileged.
+
+The pinned chart's ClusterRole grants the provisioner ServiceAccount
+`ok-storage-local-quota/ok-storage-local-quota-provisioner` all verbs on `pods`,
+`namespaces`, `events` and `endpoints` in every namespace (it creates helper Pods
+on the volume's node). That ServiceAccount can therefore start a Pod in any
+namespace under any ServiceAccount there, which is platform authority: treat it
+like other cluster add-on controllers. The openkubes DeveloperWorkspace live proof
+lists it as an expected holder of Pod creation in `crossplane-system` when this
+profile is installed. Narrowing the chart's RBAC is not part of this profile.
+
+The OpenEBS `dynamic-localpv-provisioner` chart is pinned to 4.6.0 in
+`demo/local-quota-pin.json`. The downloaded archive is SHA256-checked before
+rendering and vendored alongside `demo/local-quota-provisioner.yaml`;
+`make verify` checks the archive offline. Apply consumes that rendered manifest,
+so it requires neither Helm nor a network fetch. Values are recorded in
+`values/local-quota-values.yaml`. Every image this profile deploys or its verify
+creates (provisioner, OpenEBS helper, Python writer, and privileged observer) is
+pinned as `repo:tag@sha256:digest`; test images of the other profiles
+(`tests/verify-*.yaml`) are outside this profile. The pin record lists the supplied image index digests
+resolved on 2026-10-13 with `skopeo inspect`, along with the commands to reproduce
+the render byte-for-byte. `make verify` rejects images without digests in both
+the rendered manifest and the generated proof probes. Index digests retain
+multi-architecture selection while fixing the referenced image index. Python 3 and PyYAML are required for the tools;
+live lifecycle commands also require kubectl and cluster image pulls.
+
+```bash
+LOCAL_QUOTA_APPLY=yes make local-quota-apply \
+  LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
+LOCAL_QUOTA_VERIFY=operator-proof LOCAL_QUOTA_EXPECTED_CONTEXT="disposable-guest-context" \
+  make local-quota-verify \
+  LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
+LOCAL_QUOTA_REMOVE=yes make local-quota-remove \
+  LOCAL_QUOTA_GUEST_KUBECONFIG="$HOME/.kube/guest.yaml"
+```
+
+Verify is an **operator-only proof for disposable or explicitly authorized
+environments**, **NOT a tenant-callable readiness check**. Tenants consume the
+StorageClass only. Assert `LOCAL_QUOTA_VERIFY=operator-proof` and set
+`LOCAL_QUOTA_EXPECTED_CONTEXT` to the explicitly authorized kubeconfig
+current-context name (replace the example above). Missing intent variables fail
+before any kubectl invocation. Context equality, a live SelfSubjectAccessReview
+allowing Pod creation in `ok-storage-local-quota`, and server-side dry-run
+admission of the privileged hostPath observer all pass before any probe is
+persisted. After worker selection, the exact node-bound observer is also
+server-dry-run immediately before its creation; rejection triggers probe cleanup.
+SSAR checks RBAC Pod creation, not privilege; the dry-run checks the
+actual observer spec against admission. Failures stop the proof. These are
+operator intent and authorization prerequisites, not a new access-control
+boundary: a caller with sufficient permissions can deliberately assert both
+variables, and admission/permissions may change after preflight.
+
+These targets never fall back to the host `KUBECONFIG_FILE`. Verify **mutates**
+the guest cluster: it creates a uniquely named 64Mi PVC and UID/GID 1000 Pod
+with `hostUsers: false`, then places a one-shot privileged observer on that
+same node. The observer mounts BasePath and `/dev` read-only and reads the
+worker's user-namespace sysctl. It checks XFS mount options, reads the project ID
+from the exact `spec.local.path` of the bound PV, and matches its numeric quota
+row to the PVC request (XFS report blocks are KiB). PVC UID, claimRef, PV class,
+and PV node affinity are checked before accepting that binding.
+
+The writer creates its own file, attempts `FS_IOC_FSSETXATTR` with project ID 0,
+requires rejection and an unchanged nonzero project ID, then writes until
+ENOSPC/EDQUOT within 1Mi of the 64Mi bound. The observer first requires at
+least 128Mi free filesystem space and spare inodes to distinguish a quota-bound
+write from a full worker filesystem. EINVAL, EPERM, or EACCES count as reset
+rejection only with an unchanged project ID. Verify deletes its writer and PVC, waits for the
+PV and project quota row to disappear, and removes the observer. Failures trigger
+cleanup and return a named failure; missing tools or prerequisites never pass.
+No standing privileged observer is installed. A run proves only the worker that
+hosts the probe; repeat with scheduling controls if evaluating other workers.
+
+Remove refuses while any PVC or PV references the class. It removes the class
+and provisioner resources, retaining the namespace to avoid deleting unrelated
+resources. Apply/remove require their explicit confirmation variables; verify's
+probe creation and cleanup are part of its invocation.
+
 ## Current Implementation: Longhorn v1
 
 Chosen for the current hardware: two bare-metal storage nodes (`ok-infra`,

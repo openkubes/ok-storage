@@ -1,4 +1,4 @@
-.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean gpu-demo-apply gpu-demo-verify gpu-demo-remove
+.PHONY: help verify prereqs install uninstall apply-classes status backup-target clean gpu-demo-apply gpu-demo-verify gpu-demo-remove local-quota-apply local-quota-verify local-quota-remove
 
 KUBECONFIG_FILE ?= $(HOME)/.kube/ok-infra.yaml
 LONGHORN_NAMESPACE ?= longhorn-system
@@ -16,6 +16,7 @@ help:
 verify:
 	./scripts/verify-manifests.sh
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/gpu-demo-storage.py self-test
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/local-quota-storage.py self-test
 
 ## prereqs: install open-iscsi + nfs-common on every RKE2 host node
 prereqs:
@@ -74,3 +75,15 @@ gpu-demo-verify:
 gpu-demo-remove:
 	GPU_DEMO_REMOVE=$(GPU_DEMO_REMOVE) python3 scripts/gpu-demo-storage.py remove \
 		--kubeconfig $(KUBECONFIG_FILE)
+
+## local-quota-apply: install the non-contract quota profile in an explicit guest cluster
+local-quota-apply:
+	LOCAL_QUOTA_APPLY=$(LOCAL_QUOTA_APPLY) python3 scripts/local-quota-storage.py apply --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"
+
+## local-quota-verify: operator-only proof in disposable/authorized environments; creates privileged hostPath observer; NOT tenant-callable readiness (tenants consume StorageClass only)
+local-quota-verify:
+	LOCAL_QUOTA_VERIFY="$(LOCAL_QUOTA_VERIFY)" LOCAL_QUOTA_EXPECTED_CONTEXT="$(LOCAL_QUOTA_EXPECTED_CONTEXT)" python3 scripts/local-quota-storage.py verify --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"
+
+## local-quota-remove: remove the unused quota profile (namespace retained)
+local-quota-remove:
+	LOCAL_QUOTA_REMOVE=$(LOCAL_QUOTA_REMOVE) python3 scripts/local-quota-storage.py remove --kubeconfig "$(LOCAL_QUOTA_GUEST_KUBECONFIG)"

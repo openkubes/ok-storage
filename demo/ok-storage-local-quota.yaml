@@ -1,0 +1,28 @@
+# Demo-only guest-cluster local-quota implementation profile.
+#
+# This is intentionally NOT one of the stable ok-storage contract classes.
+# It is fixed-size, node-local, non-replicated storage for reproducible
+# workspace demonstrations whose Pods are admitted with hostUsers: false.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok-storage-local-quota
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+    openebs.io/cas-type: local
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "hostpath"
+      - name: BasePath
+        value: "/var/openebs/local-quota"
+      - name: XFSQuota
+        enabled: "true"
+        data:
+          softLimitGrace: "0%"
+          hardLimitGrace: "0%"
+  labels:
+    openkubes.io/lifecycle: demo
+    openkubes.io/storage-profile: local-quota
+provisioner: openebs.io/local
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
