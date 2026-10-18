@@ -23,6 +23,8 @@ No manifest in any `ok-*` repo may reference an implementation-specific
 StorageClass (e.g. `longhorn`, `rook-ceph-block`). The three names above are
 the only stable interface.
 
+An experimental, non-contract investigation of developer-workspace capacity enforcement is documented in [the C3 preflight](docs/developer-workspace-capacity-preflight.md). It does not add or change a StorageClass guarantee.
+
 ### Explicit non-HA GPU demo profile
 
 `ok-storage-block-gpu-test` is a deliberately **unstable, demo-only** class.

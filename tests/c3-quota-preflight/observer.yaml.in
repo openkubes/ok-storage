@@ -1,0 +1,29 @@
+# Test-only privileged observer. It is separate from the unprivileged writers.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-quota-observer
+  namespace: ok176-c3
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+spec:
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  restartPolicy: Never
+  containers:
+  - name: observer
+    # read-only /dev mount below: kubelet cannot create /dev/termination-log
+    terminationMessagePath: /tmp/termination-log
+    image: openebs/linux-utils:4.6.0
+    securityContext:
+      privileged: true
+      allowPrivilegeEscalation: true
+    command: [sh, -ec, "trap 'exit 0' TERM INT; while :; do sleep 3600; done"]
+    volumeMounts:
+    - {name: base, mountPath: /data, readOnly: true}
+    - {name: host-dev, mountPath: /dev, readOnly: true}
+  volumes:
+  - name: base
+    hostPath: {path: /var/openebs/ok176-c3, type: DirectoryOrCreate}
+  - name: host-dev
+    hostPath: {path: /dev, type: Directory}

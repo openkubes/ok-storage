@@ -1,0 +1,237 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ok176-c3
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ok176-c3-xfs-noquota
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+  annotations:
+    openebs.io/cas-type: local
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "hostpath"
+      - name: BasePath
+        value: "/var/openebs/ok176-c3"
+provisioner: openebs.io/local
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowedTopologies:
+- matchLabelExpressions:
+  - key: kubernetes.io/hostname
+    values: ["__NODE_NAME__"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-writer-source
+  namespace: ok176-c3
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+data:
+  quota_writer.c: |
+__WRITER_SOURCE__
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-gate
+  namespace: ok176-c3
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+data:
+  start: hold
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok176-c3-control-gate
+  namespace: ok176-c3
+  labels:
+    openkubes.io/test-only: "ok-176-c3"
+data:
+  start: hold
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ok176-c3-quota-128
+  namespace: ok176-c3
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ok176-c3-xfs
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ok176-c3-quota-256
+  namespace: ok176-c3
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ok176-c3-xfs
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ok176-c3-control
+  namespace: ok176-c3
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ok176-c3-xfs
+  resources:
+    requests:
+      storage: 32Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ok176-c3-noquota
+  namespace: ok176-c3
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ok176-c3-xfs-noquota
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-quota-128
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "mkdir -p /data/nested && chown -R 1000:1000 /data"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|quota128|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer quota128 /data/nested/payload 167772160; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|quota128|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-quota-128}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-quota-256
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "mkdir -p /data/nested && chown -R 1000:1000 /data"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|quota256|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer quota256 /data/nested/payload 301989888 1048576; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|quota256|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-quota-256}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-control
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "mkdir -p /data/nested && chown -R 1000:1000 /data"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|control|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer control /data/nested/payload 16777216; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|control|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: control-gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: control-gate, configMap: {name: ok176-c3-control-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-control}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ok176-c3-noquota
+  namespace: ok176-c3
+  labels: {openkubes.io/test-only: "ok-176-c3"}
+spec:
+  hostUsers: false
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  nodeSelector: {kubernetes.io/hostname: "__NODE_NAME__"}
+  initContainers:
+  - name: build-writer
+    image: __WRITER_BUILDER_IMAGE__
+    command: [gcc, -static, -O2, -Wall, -Wextra, -Werror, /source/quota_writer.c, -o, /writer/quota-writer]
+    volumeMounts: [{name: source, mountPath: /source, readOnly: true}, {name: writer, mountPath: /writer}]
+  - name: prepare-volume
+    image: openebs/linux-utils:4.6.0
+    command: [sh, -ec, "mkdir -p /data/nested && chown -R 1000:1000 /data"]
+    volumeMounts: [{name: data, mountPath: /data}]
+  containers:
+  - name: writer
+    image: openebs/linux-utils:4.6.0
+    securityContext: {runAsUser: 1000, runAsGroup: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+    command: [sh, -ec, "fs=$(stat -f -c '%i %T' /data); printf 'FS|noquota|%s\\n' \"$fs\"; while [ \"$(cat /gate/start)\" != go ]; do sleep 1; done; /writer/quota-writer noquota /data/nested/payload 167772160; set -- $(stat -f -c '%a %S' /data); printf 'HEADROOM|after|noquota|%s\\n' \"$(( $1 * $2 / 1024 ))\""]
+    volumeMounts: [{name: writer, mountPath: /writer, readOnly: true}, {name: gate, mountPath: /gate, readOnly: true}, {name: data, mountPath: /data}]
+  volumes:
+  - {name: source, configMap: {name: ok176-c3-writer-source}}
+  - {name: writer, emptyDir: {}}
+  - {name: gate, configMap: {name: ok176-c3-gate}}
+  - {name: data, persistentVolumeClaim: {claimName: ok176-c3-noquota}}

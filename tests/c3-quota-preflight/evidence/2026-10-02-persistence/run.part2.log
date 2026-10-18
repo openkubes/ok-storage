@@ -1,0 +1,45 @@
+PASS: captured and validated atomic P1 after evidence
+PASS: C3 quota persistence evidence through P1
+=== 07:32:16 delete P1 pods, reboot worker
+pod "ok176-c3-p1-quota128" deleted
+pod "ok176-c3-p1-quota256" deleted
+pod "ok176-c3-p1-quota64" deleted
+pod "ok176-c3-p1-control" deleted
+pod "ok176-c3-p1-noquota" deleted
+boot_id before reboot: 7da313dd-598b-4202-a1fd-095786e0a1fd
+boot_id after reboot: 133fd613-1f0a-427a-b2a9-d996553cda96
+node/ok-176-c3-workers-jvmn2-vvcvr condition met
+sysctl after reboot: 11255
+pod "ok176-c3-persist-observer" deleted
+pod/ok176-c3-persist-observer created
+pod/ok176-c3-persist-observer condition met
+deployment "ok176-c3-localpv-provisioner" successfully rolled out
+ok176-c3-quota-128 Succeeded
+ok176-c3-quota-256 Succeeded
+ok176-c3-control Succeeded
+ok176-c3-noquota Succeeded
+=== 07:33:29 P2
+PASS: rendered persistence phase p2 to [redacted-phase-manifest]
+configmap/ok176-c3-p2-writer-source created
+configmap/ok176-c3-p2-gate created
+configmap/ok176-c3-p2-control-gate created
+pod/ok176-c3-p2-quota128 created
+pod/ok176-c3-p2-quota256 created
+pod/ok176-c3-p2-noquota created
+pod/ok176-c3-p2-control created
+pod/ok176-c3-p2-quota128 condition met
+pod/ok176-c3-p2-quota256 condition met
+pod/ok176-c3-p2-control condition met
+pod/ok176-c3-p2-noquota condition met
+PASS: captured atomic P2 before status
+configmap/ok176-c3-p2-gate patched
+pod/ok176-c3-p2-quota128 condition met
+pod/ok176-c3-p2-quota256 condition met
+configmap/ok176-c3-p2-control-gate patched
+pod/ok176-c3-p2-control condition met
+pod/ok176-c3-p2-noquota condition met
+PASS: captured and validated atomic P2 after evidence
+=== 07:37:09 final check
+PASS: C3 quota persistence evidence through P2
+ALL PHASES PASS
+exit=0

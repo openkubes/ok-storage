@@ -1,0 +1,28 @@
+# Test-only: rendered by c3_render.py; never a production storage profile.
+global:
+  analytics:
+    enabled: false
+localpv:
+  name: ok176-c3-localpv
+  basePath: /var/openebs/ok176-c3
+  replicas: 1
+  privileged: true
+  nodeDeployment:
+    enabled: false
+hostpathClass:
+  name: ok176-c3-xfs
+  enabled: true
+  isDefaultClass: false
+  reclaimPolicy: Delete
+  basePath: /var/openebs/ok176-c3
+  xfsQuota:
+    enabled: true
+    softLimitGrace: "0%"
+    hardLimitGrace: "0%"
+  ext4Quota:
+    enabled: false
+helperPod:
+  image:
+    repository: openebs/linux-utils
+    tag: "4.6.0"
+  timeoutSecs: 120
