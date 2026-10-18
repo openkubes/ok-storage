@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only persistence capture for the coordinator-run OK-176 C3 fixture.
+# Read-only persistence capture for the operator-run OK-176 C3 fixture.
 # This script never creates, patches, or deletes a Kubernetes object.
 set -Eeuo pipefail
 

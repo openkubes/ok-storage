@@ -1,4 +1,4 @@
-TEST-ONLY cleanup inventory for coordinator (this file performs no deletion):
+TEST-ONLY cleanup inventory for the test operator (this file performs no deletion):
 
 namespace: ok176-c3
 Helm release: ok176-c3 in namespace ok176-c3
@@ -8,7 +8,7 @@ PVCs: ok176-c3-quota-128, ok176-c3-quota-256, ok176-c3-control, ok176-c3-noquota
 Pods: ok176-c3-quota-128, ok176-c3-quota-256, ok176-c3-control, ok176-c3-noquota, ok176-c3-quota-observer
 ConfigMaps: ok176-c3-writer-source, ok176-c3-gate, ok176-c3-control-gate
 
-Before deleting the namespace/PVCs, the coordinator must list matching PVs and
+Before deleting the namespace/PVCs, the test operator must list matching PVs and
 OpenEBS helper pods, capture their events/logs and quota readback, then remove
 only objects belonging to this disposable fixture. No automated cleanup is
 provided: Retain/Delete behavior and project-quota cleanup are evidence targets.

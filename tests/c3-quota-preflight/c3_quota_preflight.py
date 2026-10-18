@@ -2,7 +2,7 @@
 """Offline evidence checker for the OK-176 C3 OpenEBS quota preflight.
 
 This program never creates a cluster, container, namespace, PVC, Pod, loop
-mapping, or filesystem.  The coordinator supplies output captured from the
+mapping, or filesystem.  The test operator supplies output captured from the
 separately-approved disposable Talos/OpenEBS run.  `quota_writer.c` is a small
 unprivileged writer for the test workload image; this checker validates its
 RESULT records rather than treating a nonzero command as proof of a bound.

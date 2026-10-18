@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only capture for a coordinator-run OK-176 C3 fixture. It never applies
+# Read-only capture for a operator-run OK-176 C3 fixture. It never applies
 # or deletes an object. Run before the writers start and after all four finish.
 set -Eeuo pipefail
 tmp_files=()
